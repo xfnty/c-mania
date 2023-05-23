@@ -1,0 +1,10 @@
+pre-commit
+
+mkdocs-material
+mkdocs-glightbox
+mkdocs-open-in-new-tab
+
+mkdoxy
+
+Jinja2
+ruamel.yaml
