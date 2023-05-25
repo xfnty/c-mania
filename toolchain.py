@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import List
 
 
-PROJECT_NAME    = 'hydro'
+PROJECT_NAME    = 'mania'
 
 PROJECT_DIR     = os.path.realpath(os.path.dirname(__file__))
 ASSETS_DIR       = os.path.join(PROJECT_DIR, 'assets')
@@ -21,6 +21,7 @@ VENV_DIR        = os.path.join(PROJECT_DIR, '.venv')
 BUILD_DIR       = os.path.join(PROJECT_DIR, 'build')
 CMAKE           = shutil.which('cmake')
 GDB             = shutil.which('gdb')
+GPROF           = shutil.which('gprof')
 
 
 @dataclass
@@ -30,7 +31,7 @@ class BuildTargetDescription:
     cmake_flags: List[str]
 
 class BuildTarget(enum.Enum):
-    Debug   = BuildTargetDescription(PROJECT_NAME, 'debug', ['-DCMAKE_BUILD_TYPE=Debug', '-DCMAKE_EXPORT_COMPILE_COMMANDS=1'])
+    Debug   = BuildTargetDescription(PROJECT_NAME, 'debug', ['-DCMAKE_BUILD_TYPE=Debug', '-DCMAKE_EXPORT_COMPILE_COMMANDS=1', '-DCMAKE_C_FLAGS=-pg', '-DCMAKE_EXE_LINKER_FLAGS=-pg', '-DCMAKE_SHARED_LINKER_FLAGS=-pg'])
     Release = BuildTargetDescription(PROJECT_NAME, 'release', ['-DCMAKE_BUILD_TYPE=Release'])
     Sandbox = BuildTargetDescription('sandbox', 'sandbox', ['-DCMAKE_BUILD_TYPE=Debug'])
 
@@ -164,6 +165,29 @@ def debug(target: BuildTarget, args: list=[]):
     run_command(cmd, cwd=get_exe_dir_for(target), status=False)
 
 
+def profile(target: BuildTarget, args: list=[]):
+    if not GPROF:
+        print('Could not find gprof executable.')
+        quit(-1)
+
+    print_stage_title('Profiling')
+    copy_assets(target)
+    exit_code = run_command(
+        [get_exe_file_for(target)] + args,
+        cwd=get_exe_dir_for(target),
+        status=False,
+        exit_on_failure=False,
+    )
+    print_stage_title('Summary')
+    if exit_code == 0:
+        run_command(
+            [GPROF, '-b', '--no-graph', get_exe_file_for(target)],
+            cwd=get_exe_dir_for(target),
+            status=False,
+        )
+    print_stage_title(f'Exit code {exit_code}')
+
+
 def main():
     arg_parser = argparse.ArgumentParser(
         description='Configure, build and run this project using CMake.' +
@@ -195,6 +219,12 @@ def main():
         action='store_true',
         help='Run the project with GDB.'
     )
+    run_group.add_argument(
+        '-p', '--profile',
+        dest='profile',
+        action='store_true',
+        help='Run the project with GPROF.'
+    )
 
     arg_parser.add_argument(
         '--clean',
@@ -213,6 +243,7 @@ def main():
         '-a', '--args',
         nargs=argparse.REMAINDER,
         default=[],
+        dest='args',
         help='Specify command line arguments for the built project to be run with.'
     )
 
@@ -229,9 +260,11 @@ def main():
         build(target)
 
     if args.run:
-        run(target)
+        run(target, args.args)
     elif args.debug:
-        debug(target)
+        debug(target, args.args)
+    elif args.profile:
+        profile(target, args.args)
 
 
 if __name__ == '__main__':

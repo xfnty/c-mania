@@ -103,7 +103,7 @@ log_msg_t _logging_create_msg_f(const char* scope, const char* fmt, ...) {
     assert(s_initialized);
 
 	log_msg_t msg = (log_msg_t){
-		scope, malloc(256)
+		scope, malloc(LOGGING_MESSAGE_BUFFER_SIZE)
 	};
 
 	va_list args;
@@ -166,7 +166,7 @@ void _raylib_log_callback(int logLevel, const char *text, va_list args) {
         return;
 
     log_msg_t msg = (log_msg_t){
-        "raylib", (char*)malloc(256)
+        "raylib", (char*)malloc(LOGGING_MESSAGE_BUFFER_SIZE)
     };
 
     assert(vsprintf(msg.buffer, text, args) > 0);

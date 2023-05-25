@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <time.h>
 #include <sys/types.h>
 
 
@@ -17,6 +18,13 @@
 #define ID_INVALID (~(id_t)0)
 
 #define CONSTRAIN(v, a, b) ((v < a) ? a : ((v > b) ? b : v))
+
+#define min(a, b) ((a < b) ? a : b)
+#define max(a, b) ((a > b) ? a : b)
+
+#define SAFE_DELETE(p) { if (p != NULL) { free((void*)p); p = NULL; }}
+
+typedef int error_t;
 
 
 #endif

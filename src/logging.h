@@ -13,6 +13,10 @@
 #define SCOPE_NAME NULL
 #endif
 
+#ifndef LOGGING_MESSAGE_BUFFER_SIZE
+#define LOGGING_MESSAGE_BUFFER_SIZE 512
+#endif
+
 
 typedef struct {
 	const char* func;
