@@ -53,6 +53,7 @@ static float    pos = 0;
 int main(int argc, const char *argv[]) {
     init(argc, argv);
 
+    LOG("playing");
     while (!WindowShouldClose()) {
         pos = GetMusicTimePlayed(audio);
 

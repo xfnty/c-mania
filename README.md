@@ -6,6 +6,12 @@
 </p>
 
 
+Quick start (install raylib deps first)
+```
+python toolchain.py -cbr -a ./assets/80214\ Wotamin\ -\ Gigantic\ O.T.N/Wotamin\ -\ Gigantic\ O.T.N\ \(Star\ Stream\)\ \[L\ i\ a\'s\ Mania\].osu
+
+```
+
 - [`.osu` File format](https://osu.ppy.sh/wiki/en/Client/File_formats/Osu_(file_format))
 - [Raylib docs](https://www.raylib.com/cheatsheet/cheatsheet.html)
 - [Writing a Game Engine from Scratch - Part 1: Messaging](https://www.gamedeveloper.com/programming/writing-a-game-engine-from-scratch---part-1-messaging#close-modal)
