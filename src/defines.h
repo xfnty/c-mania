@@ -14,6 +14,7 @@
 	 : (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : __FILE__))
 
 #define STACKARRAY_SIZE(array) (sizeof(array)/sizeof((array)[0]))
+#define IS_OUT_OF_BOUNDS(i, array) (i < 0 || i >= STACKARRAY_SIZE(array))
 
 #define ID_INVALID (~(id_t)0)
 
