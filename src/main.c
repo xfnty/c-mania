@@ -131,7 +131,7 @@ void draw_notes() {
         for (int i = last_hit_col_i[ci] + 1; i < kv_size(*col); i++) {
             note_event_t* event = &kv_A(*col, i);
 
-            if (event->time >= pos + time_window)
+            if (i > last_hit_col_i[ci] + 1 && event->time >= pos + time_window)
                 break;
 
             if (event->type == NOTE_CLICK) {
