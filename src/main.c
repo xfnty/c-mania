@@ -189,7 +189,6 @@ void update_autoplayer() {
         else if (event->type == NOTE_HOLD_START) {
             if (event->time <= pos) {
                 last_hit_col_i[ci]++;
-                hit_note_count++;
                 PlaySound(hit);
             }
         }
