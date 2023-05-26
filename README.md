@@ -9,7 +9,6 @@
 Quick start (install raylib deps first)
 ```
 python toolchain.py -cbr -a ./assets/80214\ Wotamin\ -\ Gigantic\ O.T.N/Wotamin\ -\ Gigantic\ O.T.N\ \(Star\ Stream\)\ \[L\ i\ a\'s\ Mania\].osu
-
 ```
 
 - [`.osu` File format](https://osu.ppy.sh/wiki/en/Client/File_formats/Osu_(file_format))
@@ -24,7 +23,7 @@ python toolchain.py -cbr -a ./assets/80214\ Wotamin\ -\ Gigantic\ O.T.N/Wotamin\
 
 **Todo**
 - [x] `.osu` parsing
-- [ ] screens & main loop
-- [ ] main menu screen
-- [ ] gameplay screen
-- [ ] scores screen
+- [x] click note rendering
+- [x] hold note rendering
+- [x] gameplay prototype
+- [ ] Slider velocity, HP
