@@ -41,8 +41,13 @@ static void draw_keys();
 static void draw_info();
 static void update_input();
 static void update_autoplayer();
+static void update_difficulty();
+static void update_events();
 
 
+static float    bpm = -1;
+static int      last_event = -1;
+static int      last_timing_point = -1;
 static int      last_hit_col_i[9] = {-1};
 static int      hit_note_count = 0;
 static float    time_window = 1;
@@ -69,6 +74,7 @@ int main(int argc, const char *argv[]) {
         UpdateMusicStream(audio);
         update_input();
         update_autoplayer();
+        update_difficulty();
 
         EndDrawing();
     }
@@ -202,6 +208,25 @@ void update_autoplayer() {
         }
 
         hit_note_count = max(hit_note_count, last_hit_col_i[ci]);
+    }
+}
+
+void update_difficulty() {
+    if (last_timing_point + 1 >= kv_size(beatmap.timing_points))
+        return;
+
+    beatmap_timing_point_t* tm = &kv_A(beatmap.timing_points, last_timing_point + 1);
+    if (tm->time_start / 1000.0f <= pos) {
+        if (tm->is_uninherited)
+            bpm = 1.0f / tm->length * 60000;
+        LOGF(
+            "Timing Point: [%s] BPM: %1.f, SV: %.1f, Meter: %d",
+            (tm->is_uninherited) ? "!" : "+",
+            bpm,
+            (tm->is_uninherited) ? (beatmap.SV) : (beatmap.SV * (-tm->length / 100.0f)),
+            tm->meter
+        );
+        last_timing_point++;
     }
 }
 
