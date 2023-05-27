@@ -34,9 +34,14 @@
  *  So each object's absolute Y position can be described in this way:
  *  noteY = prevNoteY + 100 * SV * (noteTime - prevNoteTime) / fullBeatLength
  *
+ *  !!! (What about timing points between objects?) !!!
+ *
  *  The object's position on a screen would be equal to:
  *  y = playfieldHeight * (1 - (noteY - judgementLineY) / 480)
  *  (playfield Y increases from bottom to top, window Y from top to bottom)
+ *
+ *  Judgement line Y:
+ *  JudgementLineY = prevJudgementLineY + 100 * SV * (deltaTime / fullBeatLength)
  *
  *  Osu wiki:
  *  Slider Velocity: https://osu.ppy.sh/wiki/en/Gameplay/Hit_object/Slider/Slider_velocity
@@ -83,8 +88,7 @@ static int      last_timing_point = -1;
 static int      last_hit_col_i[9] = {-1};
 static int      hit_note_count = 0;
 static float    time_window = 1;
-static int      last_hit_i = -1;
-static float    vol = 0.3;
+static float    vol = 0.05;
 static double   hit_anims[9] = {-10};
 static float    pos = 0;
 int main(int argc, const char *argv[]) {
@@ -150,7 +154,7 @@ void init(int argc, const char *argv[]) {
     SetMusicVolume(audio, 1);
 
     PlayMusicStream(audio);
-    SetMasterVolume(0.05f);
+    SetMasterVolume(vol);
 
     InitWindow(width, height, "CMania");
     // SetTargetFPS(60);
