@@ -11,6 +11,38 @@
 #include <string.h>
 
 
+/* Slider Velocity, BPM and other things
+ *
+ *  SV is the *distance* in hundreds of osu pixels (opx)
+ *  an object would travel in one full beat (4/4).
+ *
+ *  Osu pixels are pixels on a 640x480 field.
+ *  In osu!mania visible playfield height is equal to 480opx.
+ *
+ *  fullBeatLength = timingPoint.beatLength * timingPoint.meter
+ *                           (in seconds)        (beats in X/4 size)
+ *
+ *  Distance traveled by a hit object between frames:
+ *  d = 100 * SV * (deltaTime / fullBeatLength)
+ *                  (osu pixels)
+ *
+ *  In osu client hit objects does not move relative to each other
+ *  but the field itself moves with different speeds.
+ *  This means that objects' positions in can be precalculated
+ *  and then scrolled through with different speeds.
+ *
+ *  So each object's absolute Y position can be described in this way:
+ *  noteY = prevNoteY + 100 * SV * (noteTime - prevNoteTime) / fullBeatLength
+ *
+ *  The object's position on a screen would be equal to:
+ *  y = playfieldHeight * (1 - (noteY - judgementLineY) / 480)
+ *  (playfield Y increases from bottom to top, window Y from top to bottom)
+ *
+ *  Osu wiki:
+ *  Slider Velocity: https://osu.ppy.sh/wiki/en/Gameplay/Hit_object/Slider/Slider_velocity
+ */
+
+
 typedef enum {
     NOTE_CLICK,
     NOTE_HOLD_START,
@@ -94,9 +126,6 @@ void init(int argc, const char *argv[]) {
 
     ChangeDirectory(GetDirectoryPath(argv[0]));
 
-    InitWindow(width, height, "CMania");
-    // SetTargetFPS(60);
-
     InitAudioDevice();
     if (!IsAudioDeviceReady()) {
         LOG("Failed to initialize audio");
@@ -108,7 +137,7 @@ void init(int argc, const char *argv[]) {
         LOG("Could not load hit sound");
         exit(-1);
     }
-    SetSoundVolume(hit, 1);
+    SetSoundVolume(hit, 0.75f);
 
     load_beatmap(argv[1]);
     load_note_columns();
@@ -118,10 +147,13 @@ void init(int argc, const char *argv[]) {
         LOG("Failed to load audio");
         exit(-1);
     }
-    SetMusicVolume(audio, 0.75f);
+    SetMusicVolume(audio, 1);
 
     PlayMusicStream(audio);
-    SetMasterVolume(0.1);
+    SetMasterVolume(0.05f);
+
+    InitWindow(width, height, "CMania");
+    // SetTargetFPS(60);
 }
 
 void deinit() {
@@ -220,7 +252,7 @@ void update_difficulty() {
         if (tm->is_uninherited)
             bpm = 1.0f / tm->length * 60000;
         LOGF(
-            "Timing Point: [%s] BPM: %1.f, SV: %.1f, Meter: %d",
+            "Timing Point: [%s] BPM: %7.0f, SV: %5.1f, Meter: %d",
             (tm->is_uninherited) ? "!" : "+",
             bpm,
             (tm->is_uninherited) ? (beatmap.SV) : (beatmap.SV * (-tm->length / 100.0f)),
@@ -245,11 +277,21 @@ void draw_keys() {
 }
 
 void draw_info() {
+    beatmap_timing_point_t* tm = &kv_A(beatmap.timing_points, last_timing_point);
     DrawFPS(0, 0);
     DrawText(TextFormat("vol %.2f", vol), 0, 21, 16, ORANGE);
     DrawText(TextFormat("Note %d/%d", hit_note_count, kv_size(beatmap.notes)), 0, 38, 16, RED);
-    DrawText(TextFormat("Pos %2.f", pos), 0, 54, 16, GRAY);
-
+    DrawText(TextFormat("BPM %.0f", bpm), 0, 54, 16, BLACK);
+    DrawText(
+        TextFormat(
+            "SV %.1f",
+            (tm->is_uninherited) ? (beatmap.SV) : (beatmap.SV * (-tm->length / 100.0f))
+        ),
+        0,
+        70,
+        16,
+        DARKGRAY
+    );
 }
 
 void load_note_columns() {
