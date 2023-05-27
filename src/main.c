@@ -220,7 +220,7 @@ void update_difficulty() {
         if (tm->is_uninherited)
             bpm = 1.0f / tm->length * 60000;
         LOGF(
-            "Timing Point: [%s] BPM: %1.f, SV: %.1f, Meter: %d",
+            "Timing Point: [%s] BPM: %7.0f, SV: %5.1f, Meter: %d",
             (tm->is_uninherited) ? "!" : "+",
             bpm,
             (tm->is_uninherited) ? (beatmap.SV) : (beatmap.SV * (-tm->length / 100.0f)),
@@ -245,11 +245,21 @@ void draw_keys() {
 }
 
 void draw_info() {
+    beatmap_timing_point_t* tm = &kv_A(beatmap.timing_points, last_timing_point);
     DrawFPS(0, 0);
     DrawText(TextFormat("vol %.2f", vol), 0, 21, 16, ORANGE);
     DrawText(TextFormat("Note %d/%d", hit_note_count, kv_size(beatmap.notes)), 0, 38, 16, RED);
-    DrawText(TextFormat("Pos %2.f", pos), 0, 54, 16, GRAY);
-
+    DrawText(TextFormat("BPM %.0f", bpm), 0, 54, 16, BLACK);
+    DrawText(
+        TextFormat(
+            "SV %.1f",
+            (tm->is_uninherited) ? (beatmap.SV) : (beatmap.SV * (-tm->length / 100.0f))
+        ),
+        0,
+        70,
+        16,
+        DARKGRAY
+    );
 }
 
 void load_note_columns() {
