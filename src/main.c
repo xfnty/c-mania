@@ -11,40 +11,55 @@
 #include <string.h>
 
 
-/* Slider Velocity, BPM and other things
+/*  ##### Slider Velocity, BPM and other things #####
  *
- *  SV is the *distance* in hundreds of osu pixels (opx)
- *  an object would travel in one full beat (4/4).
  *
- *  Osu pixels are pixels on a 640x480 field.
- *  In osu!mania visible playfield height is equal to 480opx.
+ *  Glossary:
+ *      ...(?)              - Things I'm unsure(?) about.
  *
- *  fullBeatLength = timingPoint.beatLength * timingPoint.meter
- *                           (in seconds)        (beats in X/4 size)
+ *      delta               - Time spent processing previous frame.
  *
- *  Distance traveled by a hit object between frames:
- *  d = 100 * SV * (deltaTime / fullBeatLength)
- *                  (osu pixels)
+ *      Osu! pixels, opx    - A pixel on a 640x480 field.
  *
- *  In osu client hit objects does not move relative to each other
- *  but the field itself moves with different speeds.
- *  This means that objects' positions in can be precalculated
- *  and then scrolled through with different speeds.
+ *      Regular beat        - A single beat in 3/4 or 4/4 scale.
+ *      Full beat           - Consists of 3 or 4 regular beats.
  *
- *  So each object's absolute Y position can be described in this way:
- *  noteY = prevNoteY + 100 * SV * (noteTime - prevNoteTime) / fullBeatLength
+ *      Note, nt            - A hit object.
+ *      nt.time             - Note's appear time in seconds.
+ *      nt.endTime          - End of a hold note.
  *
- *  !!! (What about timing points between objects?) !!!
+ *      Timing point, tp    - A Timing Point.
+ *      atp, ptp            - Active (current) and previous timing points.
+ *      tp.time             - Start time of a timing point.
+ *      tp.meter            - A number of regular beats in a full beat. May be
+ *                            only 3 (3/4) or 4 (4/4).
+ *      tp.bl               - Length in seconds of a regular beat.
+ *      tp.fbl              - Length of a full beat (tp.bl * tp.meter).
+ *      tp.SV               - The amount of hundreds of osu pixels an object
+ *                            would travel in one full beat. [1]
  *
- *  The object's position on a screen would be equal to:
- *  y = playfieldHeight * (1 - (noteY - judgementLineY) / 480)
- *  (playfield Y increases from bottom to top, window Y from top to bottom)
+ *      Playfield, pf       - The playfield on which the notes are placed.
+ *      pf.vh               - Height of the visible part of the playfield which
+ *                            is always 480 (opx).
+ *      ...Y                - The absolute Y coordinate (opx) of an object on the
+ *                            playfield.
  *
- *  Judgement line Y:
- *  JudgementLineY = prevJudgementLineY + 100 * SV * (deltaTime / fullBeatLength)
+ *      Judgement Line, jl  - Acts like a cursor on a stationary playfield.
  *
- *  Osu wiki:
- *  Slider Velocity: https://osu.ppy.sh/wiki/en/Gameplay/Hit_object/Slider/Slider_velocity
+ *  Links:
+ *      [1]: https://osu.ppy.sh/wiki/en/Gameplay/Hit_object/Slider/Slider_velocity
+ *
+ *  Notes:
+ *      In osu client hit objects does not move relative to each other
+ *      but the field itself moves with different speeds.
+ *
+ *      Distance (opx) traveled by the judgement line between frames:
+ *      d = tp.SV * 100 * (delta / tp.fbl)
+ *
+ *      Each notes's absolute or playfield Y position can be described in this way:
+ *      ntY = atpY + atp.SV * 100 * (nt.time - atp.time) / atp.fbl
+ *
+ *      atpY = ptpY + ptp.SV * 100 * (atp.time - ptp.time) / ptp.fbl
  */
 
 
