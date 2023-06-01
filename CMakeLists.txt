@@ -18,7 +18,6 @@ add_submodule("raylib" "src" "raylib")
 add_submodule("raygui" "src" "raygui")
 add_submodule("humanize" "src" "humanize")
 add_submodule("klib" "src" "klib")
-add_submodule("inih" "src" "inih")
 
 
 # ===== Source files ===== #
