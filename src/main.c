@@ -72,20 +72,30 @@ typedef enum {
 typedef struct note_event_s {
     event_type_t type;
     float time;
+    float y;
 } note_event_t;
 
-typedef kvec_t(note_event_t) column_t;
+typedef struct column_s {
+    kvec_t(note_event_t)    events;
+} column_t;
+
 
 static kvec_t(column_t) columns;
-static Sound hit;
-static Music audio;
-static beatmap_t beatmap;
-static const int width = 280;
-static const int height = 480;
-static const float line_y = height * 0.9f;
+static kvec_t(float)    timing_point_Ys;
+static Sound            hit;
+static Music            audio;
+static beatmap_t        beatmap;
+static const int        width = 280;
+static const int        height = 480;
+static const float      line_y = height * 0.9f;
 
+// Mainloop
 static void init(int argc, const char *argv[]);
+static void update();
+static void fixed_update();
 static void deinit();
+
+// Support functions
 static void load_beatmap(const char* filepath);
 static void load_note_columns();
 static void draw_notes();
@@ -97,6 +107,7 @@ static void update_difficulty();
 static void update_events();
 
 
+static float    last_fixed_update_time = -999;
 static float    bpm = -1;
 static int      last_event = -1;
 static int      last_timing_point = -1;
@@ -111,23 +122,12 @@ int main(int argc, const char *argv[]) {
 
     LOG("playing");
     while (!WindowShouldClose()) {
-        pos = GetMusicTimePlayed(audio);
+        if (GetTime() - last_fixed_update_time >= 1.0f / 60.0f) {
+            fixed_update();
+            last_fixed_update_time = GetTime();
+        }
 
-        BeginDrawing();
-        ClearBackground(WHITE);
-
-        DrawLine(0, line_y, width, line_y, LIGHTGRAY);
-
-        draw_notes();
-        draw_keys();
-        draw_info();
-
-        UpdateMusicStream(audio);
-        update_input();
-        update_autoplayer();
-        update_difficulty();
-
-        EndDrawing();
+        update();
     }
 
     deinit();
@@ -172,7 +172,30 @@ void init(int argc, const char *argv[]) {
     SetMasterVolume(vol);
 
     InitWindow(width, height, "CMania");
-    // SetTargetFPS(60);
+    SetTargetFPS(120);
+}
+
+void update() {
+    pos = GetMusicTimePlayed(audio);
+
+    BeginDrawing();
+    ClearBackground(WHITE);
+
+    DrawLine(0, line_y, width, line_y, LIGHTGRAY);
+
+    draw_notes();
+    draw_keys();
+    draw_info();
+
+    update_input();
+    update_autoplayer();
+    update_difficulty();
+
+    EndDrawing();
+}
+
+void fixed_update() {
+    UpdateMusicStream(audio);
 }
 
 void deinit() {
@@ -185,8 +208,8 @@ void draw_notes() {
     for (int ci = 0; ci < kv_size(columns); ci++) {
         column_t* col = &kv_A(columns, ci);
 
-        for (int i = last_hit_col_i[ci] + 1; i < kv_size(*col); i++) {
-            note_event_t* event = &kv_A(*col, i);
+        for (int i = last_hit_col_i[ci] + 1; i < kv_size(col->events); i++) {
+            note_event_t* event = &kv_A(col->events, i);
 
             if (i > last_hit_col_i[ci] + 1 && event->time >= pos + time_window)
                 break;
@@ -201,8 +224,8 @@ void draw_notes() {
                     RED
                 );
             }
-            else if (event->type == NOTE_HOLD_START && i + 1 < kv_size(*col)) {
-                note_event_t* next_event = &kv_A(*col, i + 1);
+            else if (event->type == NOTE_HOLD_START && i + 1 < kv_size(col->events)) {
+                note_event_t* next_event = &kv_A(col->events, i + 1);
 
                 float current_event_y = line_y + (pos - event->time) * height;
                 float next_event_y = line_y + (pos - next_event->time) * height;
@@ -233,7 +256,7 @@ void draw_notes() {
 void update_autoplayer() {
     for (int ci = 0; ci < kv_size(columns); ci++) {
         column_t* col = &kv_A(columns, ci);
-        note_event_t* event = &kv_A(*col, last_hit_col_i[ci] + 1);
+        note_event_t* event = &kv_A(col->events, last_hit_col_i[ci] + 1);
 
         if (event->type == NOTE_CLICK) {
             if (event->time <= pos) {
@@ -314,29 +337,77 @@ void draw_info() {
 }
 
 void load_note_columns() {
+    LOG("preprocessing timing points ...");
+    kv_init(timing_point_Ys);
+    kv_resize(float, timing_point_Ys, kv_size(beatmap.timing_points));
+
+    kv_A(timing_point_Ys, 0) = 0;
+    LOGF("TP[%d].y = %f", 0, 0);
+    float len = 1;
+    for (int i = 1; i < kv_size(beatmap.timing_points); i++) {
+        beatmap_timing_point_t* ptp = &kv_A(beatmap.timing_points, i-1);
+        beatmap_timing_point_t* atp = &kv_A(beatmap.timing_points, i);
+
+        if (ptp->is_uninherited)
+            len = ptp->length;
+
+        float ptpY = kv_A(timing_point_Ys, i - 1);
+        float ptpSV = (ptp->is_uninherited) ? beatmap.SV : (beatmap.SV * (-ptp->length / 100.0f));
+        float ptpTime = ptp->time_start / 1000.0f;
+        float atpTime = atp->time_start / 1000.0f;
+
+        // atpY = ptpY + ptp.SV * 100 * (atp.time - ptp.time) / ptp.fbl
+        float y = ptpY + ptpSV * 100 * (atpTime - ptpTime) / len / ptp->meter;
+
+        kv_A(timing_point_Ys, i) = y;
+        LOGF(
+            "TP[%d].y = %f (ptpY=%f, ptpSV=%f, atpTime=%f, ptpTime=%f, ptpLen=%f (%f), ptpMeter=%f)",
+            i,
+            y,
+            (float)ptpY,
+            (float)ptpSV,
+            (float)atpTime,
+            (float)ptpTime,
+            (float)ptp->length,
+            (float)len,
+            (float)ptp->meter
+        );
+    }
+
     LOG("preprocessing hit objects ...");
     kv_init(columns);
     kv_resize(column_t, columns, beatmap.CS);
     for (int i = 0; i < beatmap.CS; i++) {
         column_t col;
-        kv_init(col);
+        kv_init(col.events);
         kv_push(column_t, columns, col);
     }
     for (int i = 0; i < kv_size(beatmap.notes); i++) {
         beatmap_note_t note = kv_A(beatmap.notes, i);
         column_t* column = &kv_A(columns, note.column);
 
+        // event.y = atpY + atp.SV * 100 * (nt.time - atp.time) / atp.fbl
         if (note.is_hold_note) {
-            note_event_t hold_start = { NOTE_HOLD_START, note.time_start / 1000.0f };
-            note_event_t hold_end = { NOTE_HOLD_END, note.time_end / 1000.0f };
-            kv_push(note_event_t, *column, hold_start);
-            kv_push(note_event_t, *column, hold_end);
+            note_event_t hold_start;
+            hold_start.type = NOTE_HOLD_START;
+            hold_start.time = note.time_start / 1000.0f;
+
+            note_event_t hold_end;
+            hold_end.type = NOTE_HOLD_END;
+            hold_end.time = note.time_end / 1000.0f;
+
+            kv_push(note_event_t, column->events, hold_start);
+            kv_push(note_event_t, column->events, hold_end);
         }
         else {
-            note_event_t event = { NOTE_CLICK, note.time_start / 1000.0f };
-            kv_push(note_event_t, *column, event);
+            note_event_t click;
+            click.type = NOTE_CLICK;
+            click.time = note.time_start / 1000.0f;
+
+            kv_push(note_event_t, column->events, click);
         }
     }
+
     // for (int i = 0; i < kv_size(columns); i++) {
     //     LOGF("Column %d: %d notes", i + 1, kv_size(kv_A(columns, i)));
     // }
