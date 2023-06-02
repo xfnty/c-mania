@@ -105,8 +105,10 @@ static void update_input();
 static void update_autoplayer();
 static void update_difficulty();
 static void update_events();
+static void update_judgement_line();
 
 
+static float    judgementLineY = 0;
 static float    last_fixed_update_time = -999;
 static float    bpm = -1;
 static int      last_event = -1;
@@ -190,6 +192,7 @@ void update() {
     update_input();
     update_autoplayer();
     update_difficulty();
+    update_judgement_line();
 
     EndDrawing();
 }
@@ -294,11 +297,12 @@ void update_difficulty() {
         if (tm->is_uninherited)
             bpm = 1.0f / tm->length * 60000;
         LOGF(
-            "Timing Point: [%s] BPM: %7.0f, SV: %5.1f, Meter: %d",
+            "Timing Point: [%s] BPM: %7.0f, SV: %5.1f, Meter: %d, Y: %4.4f",
             (tm->is_uninherited) ? "!" : "+",
             bpm,
             (tm->is_uninherited) ? (beatmap.SV) : (beatmap.SV * (-tm->length / 100.0f)),
-            tm->meter
+            tm->meter,
+            kv_A(timing_point_Ys, last_timing_point + 1)
         );
         last_timing_point++;
     }
@@ -334,6 +338,24 @@ void draw_info() {
         16,
         DARKGRAY
     );
+    DrawText(TextFormat("JLY %.3f", judgementLineY), 0, 86, 16, BLACK);
+}
+
+float _l = 1;
+void update_judgement_line() {
+    if (last_timing_point < 0 || last_timing_point >= kv_size(beatmap.timing_points))
+        return;
+
+    beatmap_timing_point_t* atp = &kv_A(beatmap.timing_points, last_timing_point);
+    float atpY = kv_A(timing_point_Ys, last_timing_point);
+
+    if (atp->is_uninherited)
+        _l = atp->length;
+
+    // tp.SV * 100 * (delta / tp.fbl)
+    float atpSV = (atp->is_uninherited) ? beatmap.SV : (beatmap.SV * (-atp->length / 100.0f));
+
+    judgementLineY += (pos - atp->time_start / 1000.0f) * (atpSV * 100) / _l / atp->meter;
 }
 
 void load_note_columns() {
