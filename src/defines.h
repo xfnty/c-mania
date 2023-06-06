@@ -9,6 +9,8 @@
 #include <sys/types.h>
 
 
+typedef int error_t;
+
 #define __FILENAME__ ((strrchr(__FILE__, '/') != NULL) 						\
 	 ? strrchr(__FILE__, '/') + 1 											\
 	 : (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : __FILE__))
@@ -20,12 +22,10 @@
 
 #define CONSTRAIN(v, a, b) ((v < a) ? a : ((v > b) ? b : v))
 
-#define min(a, b) ((a < b) ? a : b)
-#define max(a, b) ((a > b) ? a : b)
+#define MIN(a, b) ((a < b) ? a : b)
+#define MAX(a, b) ((a > b) ? a : b)
 
-#define SAFE_DELETE(p) { if (p != NULL) { free((void*)p); p = NULL; }}
-
-typedef int error_t;
+// #define SAFE_DELETE(p) { if (p != NULL) { free((void*)p); p = NULL; }}
 
 
 #endif

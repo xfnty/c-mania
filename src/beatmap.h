@@ -2,71 +2,116 @@
 #define BEATMAP_H
 
 #include <stdbool.h>
-
+#include <defines.h>
 #include <kvec.h>
+#include <raylib.h>
+
+#ifndef STRSIZE
+#define STRSIZE 128
+#endif
 
 
-// .osu format: https://osu.ppy.sh/wiki/en/Client/File_formats/Osu_(file_format)
+/*  References:
+ *      https://osu.ppy.sh/wiki/en/Beatmap
+ *      https://osu.ppy.sh/wiki/en/Client/File_formats/Osu_(file_format)
+ */
 
-typedef struct beatmap_break_s {
-    int time_start;
-    int time_end;
-} beatmap_break_t;
+typedef float seconds_t;
+typedef float percentage_t; // 1.0 is 100%
 
-typedef struct beatmap_timing_point_s {
-    int     time_start;
-    float   length;
-    int     meter;
-    bool    is_uninherited;
-} beatmap_timing_point_t;
+typedef struct {
+    seconds_t start_time;
+    seconds_t end_time;
+} break_event_t;
 
-typedef struct beatmap_note_s {
-    int     time_start;
-    int     time_end;
-    int     column;
-    bool    is_hold_note;
-} beatmap_note_t;
+// There's no concept of inherited and uninherited timing points
+typedef struct {
+    seconds_t       start_time;
+    seconds_t       end_time;
+    seconds_t       beat_length;
+    float           SV;
+    float           meter;
+    percentage_t    volume;
+    bool            kiai_enabled;
+} timing_point_t;
 
-typedef struct beatmap_s {
-    char format_version[10];
+typedef struct {
+    seconds_t   start_time;
+    seconds_t   end_time; // nonzero for hold note
+    int         column;
+} hitobject_t;
 
-    // [General]
-    char beatmap_filepath[256];
-    char audio_filename[256];
-    float       audio_length;
-    float       audio_lead_in;
-    int         preview_time;
-    float       stack_leniency;
-    int         mode;
+typedef enum {
+    PLAYFIELD_EVENT_INVALID,
+    PLAYFIELD_EVENT_CLICK,
+    PLAYFIELD_EVENT_HOLD_START,
+    PLAYFIELD_EVENT_HOLD_END,
+} playfield_event_type_t;
 
-    // [Metadata]
-    char title[256];
-    char artist[256];
-    char creator[256];
-    char difname[256];
+typedef struct {
+    playfield_event_type_t type;
+    seconds_t time;
+} playfield_event_t;
 
-    // [Difficulty]
+typedef struct {
+    kvec_t(playfield_event_t) events;
+} playfield_column_t;
+
+typedef struct {
+    kvec_t(playfield_column_t) columns;
+} playfield_t;
+
+typedef struct {
+    id_t        id;
+    char        name[STRSIZE];
+    char        url[STRSIZE];
+
+    Music       audio;
+    seconds_t   audio_length;
+    char        audio_filename[STRSIZE];
+    seconds_t   audio_leadin;
+    seconds_t   preview_time;
+    id_t        sample_set;
+    bool        epilepsy_warning_enabled;
+    bool        special_style_enabled;
+
     float HP;
-    float CS; // column count in mania
+    float CS; // eg. column count
     float OD;
     float AR;
     float SV;
     float STR;
+    float star_rating;
 
-    // [Events]
-    kvec_t(beatmap_break_t) breaks;
-    char background_filename[256];
+    char                    background_filename[STRSIZE];
+    char                    video_filename[STRSIZE];
+    kvec_t(break_event_t)   breaks;
+    kvec_t(timing_point_t)  timing_points;
 
-    // [TimingPoints]
-    kvec_t(beatmap_timing_point_t) timing_points;
+    kvec_t(hitobject_t)     hitobjects;
+    playfield_t             playfield;
+} difficulty_t;
 
-    // [HitObjects]
-    kvec_t(beatmap_note_t) notes;
+typedef struct {
+    id_t        id;
+    char        title[STRSIZE];
+    char        title_unicode[STRSIZE];
+    char        artist[STRSIZE];
+    char        artist_unicode[STRSIZE];
+    char        creator[STRSIZE];
+    char        sources[STRSIZE];
+    char        tags[STRSIZE];
+
+    kvec_t(difficulty_t) difficulties;
 } beatmap_t;
 
 
-bool beatmap_load(const char* filepath, beatmap_t* new_beatmap, bool load_only_meta);
+bool beatmap_load(beatmap_t* beatmap, const char* path); // directory or .osz
 void beatmap_destroy(beatmap_t* beatmap);
 void beatmap_debug_print(beatmap_t* beatmap);
+
+timing_point_t*     difficulty_get_timing_point_for(difficulty_t* difficulty, seconds_t time);
+playfield_event_t*  difficulty_get_playfield_event_for(difficulty_t* difficulty, seconds_t time, int column, bool find_nearest);
+
 
 #endif
