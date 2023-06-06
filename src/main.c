@@ -28,10 +28,10 @@ void load_beatmap(const char* path);
 int main(int argc, const char *argv[]) {
     init(argc, argv);
 
-    InitWindow(width, height, "CMania");
+    // InitWindow(width, height, "CMania");
 
-    while (!WindowShouldClose())
-        update();
+    // while (!WindowShouldClose())
+    //     update();
 
     deinit();
     return 0;
@@ -49,15 +49,15 @@ void init(int argc, const char *argv[]) {
 }
 
 void update() {
-    BeginDrawing();
-    ClearBackground(WHITE);
-    EndDrawing();
+    // BeginDrawing();
+    // ClearBackground(WHITE);
+    // EndDrawing();
 
-    glfwSetWindowShouldClose(GetWindowHandle(), true);
+    // glfwSetWindowShouldClose(GetWindowHandle(), true);
 }
 
 void deinit() {
-    CloseWindow();
+    // CloseWindow();
     logging_shutdown();
 }
 
