@@ -49,8 +49,9 @@ typedef enum {
 } playfield_event_type_t;
 
 typedef struct {
-    playfield_event_type_t type;
-    seconds_t time;
+    playfield_event_type_t  type;
+    seconds_t               time;
+    float                   y;
 } playfield_event_t;
 
 typedef struct {
@@ -83,6 +84,7 @@ typedef struct {
     float STR;
     float star_rating;
 
+    Image                   background;
     char                    background_filename[STRSIZE];
     char                    video_filename[STRSIZE];
     kvec_t(break_event_t)   breaks;

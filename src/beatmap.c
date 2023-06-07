@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <time.h>
 
 #define SCOPE_NAME "beatmap"
 #include <logging.h>
@@ -30,9 +31,13 @@ typedef struct {
     int i;
 } zip_callback_arg_t;
 
+static bool load_files(beatmapset_files_t* files, const char* path);
+static bool load_osz_files(beatmapset_files_t* files, const char* path);
+static bool load_directory_files(beatmapset_files_t* files, const char* path);
+static void unload_files(beatmapset_files_t* files);
 
-static bool load_osz_diffs(beatmapset_files_t* files, const char* path);
-static bool load_directory_diffs(beatmapset_files_t* files, const char* path);
+static bool parse_difficulty(glob_t file, difficulty_t* difficulty);
+
 static unsigned long on_extract(void *arg, unsigned long offset, const void *data, size_t size);
 
 bool beatmap_load(beatmap_t* beatmap, const char* path) {
@@ -44,23 +49,24 @@ bool beatmap_load(beatmap_t* beatmap, const char* path) {
     assert(beatmap != NULL);
     assert(path != NULL);
 
+    LOGF("Loading beatmap \"%s\" ...", path);
+    clock_t load_start_time = clock();
+
     beatmapset_files_t files;
     kv_init(files);
 
-    LOGF("Loading \"%s\" ...", path);
-    if (TextIsEqual(GetFileExtension(path), ".osz")) {
-        if (!load_osz_diffs(&files, path))
-            return false;
-    }
-    else {
-        if (!load_directory_diffs(&files, path))
-            return false;
-    }
+    if (!load_files(&files, path))
+        return false;
 
     for (int i = 0; i < kv_size(files); i++) {
-        free(kv_A(files, i).data);
+        difficulty_t diff;
+        if (!parse_difficulty(kv_A(files, i), &diff))
+            return false;
     }
 
+    unload_files(&files);
+
+    LOGF("beatmap_load() took %f seconds", (float)(clock() - load_start_time) / CLOCKS_PER_SEC);
     return true;
 }
 
@@ -78,8 +84,27 @@ playfield_event_t* difficulty_get_playfield_event_for(difficulty_t* difficulty, 
     return NULL;
 }
 
+bool load_files(beatmapset_files_t* files, const char* path) {
+    LOGF("Loading \"%s\" ...", path);
+    if (TextIsEqual(GetFileExtension(path), ".osz")) {
+        if (!load_osz_files(files, path))
+            return false;
+    }
+    else {
+        if (!load_directory_files(files, path))
+            return false;
+    }
 
-bool load_osz_diffs(beatmapset_files_t* files, const char* path) {
+    return true;
+}
+
+void unload_files(beatmapset_files_t* files) {
+    for (int i = 0; i < kv_size(*files); i++) {
+        free(kv_A(*files, i).data);
+    }
+}
+
+bool load_osz_files(beatmapset_files_t* files, const char* path) {
     if (!FileExists(path)) {
         LOGF("file \"%s\" does not exists", path);
         return false;
@@ -115,7 +140,7 @@ bool load_osz_diffs(beatmapset_files_t* files, const char* path) {
     return true;
 }
 
-bool load_directory_diffs(beatmapset_files_t* files, const char* path) {
+bool load_directory_files(beatmapset_files_t* files, const char* path) {
     if (!DirectoryExists(path)) {
         LOGF("directory \"%s\" does not exists", path);
         return false;
@@ -145,6 +170,35 @@ bool load_directory_diffs(beatmapset_files_t* files, const char* path) {
         humanize_bytesize(g.size, ss, STACKARRAY_SIZE(ss));
         LOGF("Loaded \"%s\" (%s)", GetFileName(fs.paths[i]), ss);
     }
+
+    return true;
+}
+
+bool parse_difficulty(glob_t file, difficulty_t* difficulty) {
+    static const int hashes[] = {
+        1584505032,     // "General"
+        -385360049,     // "Metadata"
+        -472001573,     // "Difficulty"
+        2087505209,     // "Events"
+        -442323475,     // "TimingPoints"
+        -1760687583,    // "HitObjects"
+        -1868215331,    // "AudioFilename"
+        1895414007,     // "AudioLeadIn"
+        376647317,      // "PreviewTime"
+        603842651,      // "StackLeniency"
+        2403779,        // "Mode"
+        80818744,       // "Title"
+        1969736551,     // "Artist"
+        -1601759220,    // "Creator"
+        2016261304,     // "Version"
+        -1604895024,    // "HPDrainRate"
+        882574609,      // "CircleSize"
+        955053000,      // "OverallDifficulty"
+        -1015867192,    // "ApproachRate"
+        -215404126,     // "SliderMultiplier"
+        169882686,      // "SliderTickRate"
+    };
+
 
     return true;
 }
