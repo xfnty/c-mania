@@ -1,31 +1,43 @@
+/* References:
+ *     https://osu.ppy.sh/wiki/en/Beatmap
+ *     https://osu.ppy.sh/wiki/en/Client/File_formats/Osu_(file_format)
+ */
 #ifndef BEATMAP_H
 #define BEATMAP_H
 
 #include <stdbool.h>
-#include <defines.h>
+
 #include <kvec.h>
 #include <raylib.h>
 
+#include <defines.h>
+
+
+/* macros */
 #ifndef STRSIZE
 #define STRSIZE 128
 #endif
 
 
-/*  References:
- *      https://osu.ppy.sh/wiki/en/Beatmap
- *      https://osu.ppy.sh/wiki/en/Client/File_formats/Osu_(file_format)
- */
+/* enums */
+typedef enum {
+    PLAYFIELD_EVENT_INVALID,
+    PLAYFIELD_EVENT_CLICK,
+    PLAYFIELD_EVENT_HOLD_START,
+    PLAYFIELD_EVENT_HOLD_END,
+} playfield_event_type_t;
 
+
+/* types */
 typedef float seconds_t;
-typedef float percentage_t; // 1.0 is 100%
+typedef float percentage_t;  // 1.0 is 100%
 
 typedef struct {
     seconds_t start_time;
     seconds_t end_time;
 } break_event_t;
 
-// There's no concept of inherited and uninherited timing points
-typedef struct {
+typedef struct {  // There's no concept of inherited and uninherited timing points
     seconds_t       start_time;
     seconds_t       end_time;
     seconds_t       beat_length;
@@ -37,16 +49,9 @@ typedef struct {
 
 typedef struct {
     seconds_t   start_time;
-    seconds_t   end_time; // nonzero for hold note
+    seconds_t   end_time;  // nonzero for hold note
     int         column;
 } hitobject_t;
-
-typedef enum {
-    PLAYFIELD_EVENT_INVALID,
-    PLAYFIELD_EVENT_CLICK,
-    PLAYFIELD_EVENT_HOLD_START,
-    PLAYFIELD_EVENT_HOLD_END,
-} playfield_event_type_t;
 
 typedef struct {
     playfield_event_type_t  type;
@@ -108,10 +113,10 @@ typedef struct {
 } beatmap_t;
 
 
-bool beatmap_load(beatmap_t* beatmap, const char* path); // directory or .osz
+/* function declarations */
+bool beatmap_load(beatmap_t* beatmap, const char* path);
 void beatmap_destroy(beatmap_t* beatmap);
 void beatmap_debug_print(beatmap_t* beatmap);
-
 timing_point_t*     difficulty_get_timing_point_for(difficulty_t* difficulty, seconds_t time);
 playfield_event_t*  difficulty_get_playfield_event_for(difficulty_t* difficulty, seconds_t time, int column, bool find_nearest);
 
