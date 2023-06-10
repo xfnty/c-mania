@@ -75,18 +75,14 @@ typedef struct {
     Music       audio;
     seconds_t   audio_length;
     char        audio_filename[STRSIZE];
-    seconds_t   audio_leadin;
+    seconds_t   audio_lead_in;
     seconds_t   preview_time;
-    id_t        sample_set;
-    bool        epilepsy_warning_enabled;
-    bool        special_style_enabled;
 
     float HP;
     float CS; // eg. column count
     float OD;
     float AR;
     float SV;
-    float STR;
     float star_rating;
 
     Image                   background;

@@ -15,6 +15,31 @@
 #include <raylib.h>
 #include <zip.h>
 #include <kvec.h>
+#include <khash.h>
+#include <ini.h>
+
+
+/* constants */
+#define SECTION_NULL           0
+#define SECTION_GENERAL        1584505032
+#define SECTION_METADATA       -385360049
+#define SECTION_DIFFICULTY     -472001573
+#define SECTION_EVENTS         2087505209
+#define SECTION_TIMING_POINTS  -442323475
+#define SECTION_HITOBJECTS     -1760687583
+#define KEY_AUDIO_FILENAME     -1868215331
+#define KEY_AUDIO_LEAD_IN      1895414007
+#define KEY_PREVIEW_TIME       376647317
+#define KEY_MODE               2403779
+#define KEY_TITLE              80818744
+#define KEY_ARTIST             1969736551
+#define KEY_CREATOR            -1601759220
+#define KEY_VERSION            2016261304
+#define KEY_HP                 -1604895024
+#define KEY_CS                 882574609
+#define KEY_OD                 955053000
+#define KEY_AR                 -1015867192
+#define KEY_SV                 -215404126
 
 
 /* macros */
@@ -22,10 +47,12 @@
     memcpy((void*)(dest), src, MIN(strlen(src), STACKARRAY_SIZE(dest) - 1));\
     (dest)[STACKARRAY_SIZE(dest) - 1] = '\0';
 
+#define TIME() (clock() / (float)CLOCKS_PER_SEC)
+
 
 /* types */
 typedef struct {
-    unsigned char* data;
+    char* data;
     size_t size;
     char name[STRSIZE];
 } file_t;
@@ -33,24 +60,15 @@ typedef struct {
 typedef kvec_t(file_t) beatmapset_files_t;
 
 typedef struct {
-    struct zip_t* zip;
-    beatmapset_files_t* files;
-    const char* path;
-    int i;
-} zip_callback_arg_t;
-
-typedef struct cursor_s {
-    const char* start;
-    const char* end;
-    int len;
-    const char* current;
-} cursor_t;
+    difficulty_t*   difficulty;
+    file_t*         file;
+} ini_callback_args_t;
 
 
 /* local functions */
 static bool load_files(beatmapset_files_t* files, const char* path);
 static bool parse_difficulty(file_t file, difficulty_t* difficulty);
-static bool cursor_get_next_line(cursor_t* c, char* buffer, int buffer_size);
+static int  ini_callback(void* user, const char* section, const char* line, int lineno);
 static const char* skip_space(const char* s);
 
 
@@ -58,49 +76,44 @@ bool beatmap_load(beatmap_t* beatmap, const char* path) {
     assert(beatmap != NULL);
     assert(path != NULL);
 
-    clock_t stage_start_time;
+    seconds_t load_time, parse_time, preprocess_time, calc_time;
     beatmapset_files_t files;
 
     memset(beatmap, 0, sizeof(beatmap_t));
 
-    // 1. Load .osu files into memory
     LOGF("loading beatmap \"%s\" ...", path);
-    stage_start_time = clock();
+    load_time = TIME();
     if (!load_files(&files, path))
         return false;
-    seconds_t load_duration = (clock() - stage_start_time) / (float)CLOCKS_PER_SEC;
+    load_time = TIME() - load_time;
 
-    // 2. Parse .osu buffers
     LOG("parsing beatmap ...");
-    stage_start_time = clock();
+    parse_time = TIME();
     for (int i = 0; i < kv_size(files); i++) {
         difficulty_t diff;
-        if (!parse_difficulty(kv_A(files, i), &diff))
-            return false;
-        kv_push(difficulty_t, beatmap->difficulties, diff);
+        if (parse_difficulty(kv_A(files, i), &diff))
+            kv_push(difficulty_t, beatmap->difficulties, diff);
     }
-    seconds_t parse_duration = (clock() - stage_start_time) / (float)CLOCKS_PER_SEC;
+    parse_time = TIME() - parse_time;
 
-    // 3. Preprocess playfield events
-    stage_start_time = clock();
-    seconds_t preprocess_duration = (clock() - stage_start_time) / (float)CLOCKS_PER_SEC;
+    preprocess_time = TIME();
+    preprocess_time = TIME() - preprocess_time;
 
-    // 4. Calculate star rating
-    stage_start_time = clock();
-    seconds_t calc_duration = (clock() - stage_start_time) / (float)CLOCKS_PER_SEC;
+    calc_time = TIME();
+    calc_time = TIME() - calc_time;
 
     LOGF(
         "beatmap_load():\n"
-        "\tload: %f\n"
-        "\tparse: %f\n"
-        "\tpreprocess: %f\n"
-        "\tcalc: %f\n"
-        "\tTOTAL: %f",
-        load_duration,
-        parse_duration,
-        preprocess_duration,
-        calc_duration,
-        load_duration + parse_duration + preprocess_duration + calc_duration
+        "\tload: %fs\n"
+        "\tparse: %fs\n"
+        "\tpreprocess: %fs\n"
+        "\tcalc: %fs\n"
+        "\tTOTAL: %fs",
+        load_time,
+        parse_time,
+        preprocess_time,
+        calc_time,
+        load_time + parse_time + preprocess_time + calc_time
     );
 
     for (int i = 0; i < kv_size(files); i++) {
@@ -116,11 +129,11 @@ void beatmap_destroy(beatmap_t* beatmap) {
 void beatmap_debug_print(beatmap_t* beatmap) {
 }
 
-timing_point_t* difficulty_get_timing_point_for(difficulty_t* difficulty, seconds_t time) {
+timing_point_t* DIFFICULTY_get_timing_point_for(difficulty_t* difficulty, seconds_t time) {
     return NULL;
 }
 
-playfield_event_t* difficulty_get_playfield_event_for(difficulty_t* difficulty, seconds_t time, int column, bool find_nearest) {
+playfield_event_t* DIFFICULTY_get_playfield_event_for(difficulty_t* difficulty, seconds_t time, int column, bool find_nearest) {
     return NULL;
 }
 
@@ -199,72 +212,122 @@ bool load_files(beatmapset_files_t* files, const char* path) {
         return false;
     }
 
+    size_t total_size = 0;
+    for (int i = 0; i < kv_size(*files); i++)
+        total_size += kv_A(*files, i).size;
+    LOGF("total beatmap size is %s", humanize_bytesize(total_size));
+
     return true;
 }
 
-/*
-static const int hashes[] = {
-        1584505032,     // "General"
-        -385360049,     // "Metadata"
-        -472001573,     // "Difficulty"
-        2087505209,     // "Events"
-        -442323475,     // "TiMINgPoints"
-        -1760687583,    // "HitObjects"
-        -1868215331,    // "AudioFilename"
-        1895414007,     // "AudioLeadIn"
-        376647317,      // "PreviewTime"
-        603842651,      // "StackLeniency"
-        2403779,        // "Mode"
-        80818744,       // "Title"
-        1969736551,     // "Artist"
-        -1601759220,    // "Creator"
-        2016261304,     // "Version"
-        -1604895024,    // "HPDrainRate"
-        882574609,      // "CircleSize"
-        955053000,      // "OverallDifficulty"
-        -1015867192,    // "ApproachRate"
-        -215404126,     // "SliderMultiplier"
-        169882686,      // "SliderTickRate"
-    };
-*/
 bool parse_difficulty(file_t file, difficulty_t* difficulty) {
-    memset(difficulty, 0, sizeof(*difficulty));
+    memset(difficulty, 0, sizeof(difficulty_t));
 
-    char* text = (char*)file.data;
-
-    int l = strlen(text);
-    cursor_t cursor = {
-        .start = text,
-        .end = text + l,
-        .len = l,
-        .current = text
-    };
-    char line[100] = {'\0'};
-
-    if (!cursor_get_next_line(&cursor, line, STACKARRAY_SIZE(line)) || TextFindIndex(line, "osu file format ") == -1) {
-        LOGF("File \"%s\" is not an Osu beatmap", file.name);
+    ini_callback_args_t args = { difficulty, &file };
+    int err = ini_parse_string(file.data, ini_callback, &args);
+    if (err > 0) {
+        return false;
+    }
+    else if (err < 0) {
+        LOGF("failed to parse \"%s\": file IO error", file.name);
         return false;
     }
 
-    int format_version = atoi(TextSubtext(line, 17, strlen(line) - 17));
-
-    LOGF("parsed \"%s\" (v%d)", file.name, format_version);
-
+    LOGF("parsed \"%s\"", file.name);
     return true;
 }
 
-bool cursor_get_next_line(cursor_t* c, char* buffer, int buffer_size) {
-    while (*c->current == ' ' || *c->current == '\t' || *c->current == '\n' || *c->current == '\r')
-        c->current++;
-    if (*c->current == '\0')
-        return false;
+int ini_callback(void* user, const char* section, const char* line, int lineno) {
+    ini_callback_args_t* args = (ini_callback_args_t*)user;
 
-    const char* e = MIN(strchr(c->current, '\r'), strchr(c->current, '\n'));
-    e = (e) ? e : c->end;
-    int n = MIN(MIN(e - c->current, c->len), buffer_size - 1);
-    memcpy(buffer, c->current, n);
-    buffer[n] = '\0';
-    c->current += n;
+    char key[64]        = {0};
+    char value[256]     = {0};
+    char** params       = NULL;
+    int params_count    = 0;
+
+    khint_t key_hash;
+    khint_t section_hash = (section) ? kh_str_hash_func(section) : 0;
+
+    if (section_hash == SECTION_GENERAL || section_hash == SECTION_METADATA || section_hash == SECTION_DIFFICULTY) {
+        int delim_i = TextFindIndex(line, ":");
+        memcpy(key, line, MIN(delim_i, STACKARRAY_SIZE(key)));
+        memcpy(value, skip_space(line + delim_i + 1), MIN(strlen(skip_space(line + delim_i + 1)), STACKARRAY_SIZE(value)));
+        key_hash = kh_str_hash_func(key);
+    }
+    else {
+        params_count = 0;
+        params = (char**)TextSplit(line, ',', &params_count);
+    }
+
+    switch (section_hash) {
+    case SECTION_GENERAL:
+        switch (key_hash) {
+        case KEY_AUDIO_FILENAME:
+            STRCP(args->difficulty->audio_filename, value);
+            break;
+        case KEY_AUDIO_LEAD_IN:
+            args->difficulty->audio_lead_in = atof(value);
+            break;
+        case KEY_PREVIEW_TIME:
+            args->difficulty->preview_time = atof(value);
+            break;
+        case KEY_MODE:
+            if (atoi(value) != 3) {
+                LOGF("failed to parse \"%s\": not an osu!mania beatmap (%s)", args->file->name, line);
+                return false;
+            }
+            break;
+        }
+        break;
+
+    case SECTION_METADATA:
+        switch (key_hash) {
+        case KEY_TITLE:
+            break;
+        case KEY_ARTIST:
+            break;
+        case KEY_CREATOR:
+            break;
+        case KEY_VERSION:
+            STRCP(args->difficulty->name, value);
+            break;
+        }
+        break;
+
+    case SECTION_DIFFICULTY:
+        switch (key_hash) {
+        case KEY_HP:
+            args->difficulty->HP = atof(value);
+            break;
+        case KEY_OD:
+            args->difficulty->OD = atof(value);
+            break;
+        case KEY_CS:
+            args->difficulty->CS = atof(value);
+            break;
+        case KEY_AR:
+            args->difficulty->AR = atof(value);
+            break;
+        case KEY_SV:
+            args->difficulty->SV = atof(value);
+            break;
+        }
+        break;
+
+    case SECTION_EVENTS:
+        break;
+
+    case SECTION_TIMING_POINTS:
+        break;
+
+    case SECTION_HITOBJECTS:
+        break;
+
+    case SECTION_NULL:
+        // printf("format version is v%d\n", atoi(TextSubtext(line, 17, strlen(line) - 17)));
+        break;
+    }
+
     return true;
 }
 
