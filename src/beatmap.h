@@ -70,6 +70,7 @@ typedef struct {
     id_t        id;
     int         format_version;
     char        name[STRSIZE];
+    char        file_name[STRSIZE];
 
     Music       audio;
     seconds_t   audio_length;
@@ -78,11 +79,10 @@ typedef struct {
     seconds_t   preview_time;
 
     float HP;
-    float CS; // eg. column count
+    float CS; // column count in osu!mania
     float OD;
     float AR;
     float SV;
-    float star_rating;
 
     Image                   background;
     char                    background_filename[STRSIZE];
@@ -112,6 +112,7 @@ typedef struct {
 bool beatmap_load(beatmap_t* beatmap, const char* path);
 void beatmap_destroy(beatmap_t* beatmap);
 void beatmap_debug_print(beatmap_t* beatmap);
+float               difficulty_calc_star_rating(difficulty_t* difficulty, void* mods);
 timing_point_t*     difficulty_get_timing_point_for(difficulty_t* difficulty, seconds_t time);
 playfield_event_t*  difficulty_get_playfield_event_for(difficulty_t* difficulty, seconds_t time, int column, bool find_nearest);
 

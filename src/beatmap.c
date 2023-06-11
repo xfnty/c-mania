@@ -80,13 +80,13 @@ typedef kvec_t(file_t) beatmapset_files_t;
 typedef struct {
     beatmap_t* beatmap;
     difficulty_t*   difficulty;
-    file_t*         file;
 } ini_callback_args_t;
 
 
 /* local functions */
 static bool load_files(beatmapset_files_t* files, const char* path);
-static bool parse_difficulty(file_t file, beatmap_t* beatmap, difficulty_t* difficulty);
+static bool parse_difficulty(file_t* file, beatmap_t* beatmap, difficulty_t* difficulty);
+static bool preprocess_difficulty_events(difficulty_t* difficulty);
 static int  ini_callback(void* user, const char* section, const char* line, int lineno);
 static const char* skip_space(const char* s);
 
@@ -110,29 +110,29 @@ bool beatmap_load(beatmap_t* beatmap, const char* path) {
     parse_time = TIME();
     for (int i = 0; i < kv_size(files); i++) {
         difficulty_t diff;
-        if (parse_difficulty(kv_A(files, i), beatmap, &diff))
+        if (parse_difficulty(&kv_A(files, i), beatmap, &diff))
             kv_push(difficulty_t, beatmap->difficulties, diff);
     }
     parse_time = TIME() - parse_time;
 
+    LOG("preprocessing beatmap events ...");
     preprocess_time = TIME();
+    for (int i = 0; i < kv_size(beatmap->difficulties); i++) {
+        if (!preprocess_difficulty_events(&kv_A(beatmap->difficulties, i)))
+            return false;
+    }
     preprocess_time = TIME() - preprocess_time;
-
-    calc_time = TIME();
-    calc_time = TIME() - calc_time;
 
     LOGF(
         "beatmap_load():\n"
         "\tload: %fs\n"
         "\tparse: %fs\n"
         "\tpreprocess: %fs\n"
-        "\tcalc: %fs\n"
         "\tTOTAL: %fs",
         load_time,
         parse_time,
         preprocess_time,
-        calc_time,
-        load_time + parse_time + preprocess_time + calc_time
+        load_time + parse_time + preprocess_time
     );
 
     for (int i = 0; i < kv_size(files); i++) {
@@ -143,9 +143,34 @@ bool beatmap_load(beatmap_t* beatmap, const char* path) {
 }
 
 void beatmap_destroy(beatmap_t* beatmap) {
+    assert(beatmap != NULL);
+
+    if (kv_size(beatmap->difficulties)) {
+        for (int i = 0; i < kv_size(beatmap->difficulties); i++) {
+            difficulty_t* d = &kv_A(beatmap->difficulties, i);
+
+            if (kv_size(d->breaks))         kv_destroy(d->breaks);
+            if (kv_size(d->timing_points))  kv_destroy(d->timing_points);
+            if (kv_size(d->hitobjects))     kv_destroy(d->hitobjects);
+
+            if (kv_size(d->playfield.columns)) {
+                for (int j = 0; j < kv_size(d->playfield.columns); j++) {
+                    playfield_column_t* c = &kv_A(d->playfield.columns, j);
+
+                    if (kv_size(c->events)) kv_destroy(c->events);
+                }
+
+                kv_destroy(d->playfield.columns);
+            }
+        }
+
+        kv_destroy(beatmap->difficulties);
+    }
 }
 
 void beatmap_debug_print(beatmap_t* beatmap) {
+    assert(beatmap != NULL);
+
     LOG("\nBeatmap info:");
     printf(
         "\tid: %d\n"
@@ -175,7 +200,7 @@ void beatmap_debug_print(beatmap_t* beatmap) {
             "\tOD: %.1f\n"
             "\tAR: %.1f\n"
             "\tSV: %.1f\n"
-            "\tRating: %.2f\n"
+            "\trating: %.2f\n"
             "\tbreaks[%lu]\n"
             "\ttiming points[%lu]\n"
             "\thitobjects[%lu]\n",
@@ -190,7 +215,7 @@ void beatmap_debug_print(beatmap_t* beatmap) {
             d->OD,
             d->AR,
             d->SV,
-            d->star_rating,
+            difficulty_calc_star_rating(d, 0),
             kv_size(d->breaks),
             kv_size(d->timing_points),
             kv_size(d->hitobjects)
@@ -199,14 +224,21 @@ void beatmap_debug_print(beatmap_t* beatmap) {
 }
 
 timing_point_t* difficulty_get_timing_point_for(difficulty_t* difficulty, seconds_t time) {
+    assert(difficulty != NULL);
+
     return NULL;
 }
 
 playfield_event_t* difficulty_get_playfield_event_for(difficulty_t* difficulty, seconds_t time, int column, bool find_nearest) {
+    assert(difficulty != NULL);
+
     return NULL;
 }
 
 bool load_files(beatmapset_files_t* files, const char* path) {
+    assert(files != NULL);
+    assert(path != NULL);
+
     kv_init(*files);
 
     if (TextIsEqual(GetFileExtension(path), ".osz")) {
@@ -289,24 +321,63 @@ bool load_files(beatmapset_files_t* files, const char* path) {
     return true;
 }
 
-bool parse_difficulty(file_t file, beatmap_t* beatmap, difficulty_t* difficulty) {
-    memset(difficulty, 0, sizeof(difficulty_t));
+bool parse_difficulty(file_t* file, beatmap_t* beatmap, difficulty_t* difficulty) {
+    assert(file != NULL);
+    assert(beatmap != NULL);
+    assert(difficulty != NULL);
 
-    ini_callback_args_t args = { beatmap, difficulty, &file };
-    int err = ini_parse_string(file.data, ini_callback, &args);
+    memset(difficulty, 0, sizeof(difficulty_t));
+    STRCP(difficulty->file_name, file->name);
+
+    ini_callback_args_t args = { beatmap, difficulty };
+    int err = ini_parse_string(file->data, ini_callback, &args);
     if (err > 0) {
         return false;
     }
     else if (err < 0) {
-        LOGF("failed to parse \"%s\": file IO error", file.name);
+        LOGF("failed to parse \"%s\": file IO error", difficulty->file_name);
         return false;
     }
 
-    LOGF("parsed \"%s\"", file.name);
+    LOGF("parsed \"%s\"", difficulty->file_name);
     return true;
 }
 
+bool preprocess_difficulty_events(difficulty_t* difficulty) {
+    assert(difficulty != NULL);
+
+    kv_init(difficulty->playfield.columns);
+    kv_resize(playfield_column_t, difficulty->playfield.columns, difficulty->CS);
+    for (int ci = 0; ci < difficulty->CS; ci++) {
+        playfield_column_t col = {0};
+        kv_init(col.events);
+
+        // TODO: create column events
+
+        kv_push(playfield_column_t, difficulty->playfield.columns, col);
+    }
+
+    LOGF("preprocessed \"%s\"", difficulty->file_name);
+    return true;
+}
+
+float difficulty_calc_star_rating(difficulty_t* difficulty, void* mods) {
+    assert(difficulty != NULL);
+
+    // References:
+    //      https://github.com/ppy/osu-performance/blob/master/src/performance/mania/ManiaScore.cpp
+    //      https://github.com/ppy/osu/blob/master/osu.Game.Rulesets.Mania/Difficulty/Skills/Strain.cs
+
+    // TODO
+
+    return 0;
+}
+
 int ini_callback(void* user, const char* section, const char* line, int lineno) {
+    assert(user != NULL);
+    assert(section != NULL);
+    assert(line != NULL);
+
     ini_callback_args_t* args = (ini_callback_args_t*)user;
 
     char key[64]        = {0};
@@ -347,7 +418,7 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
 
         case KEY_MODE:
             if (atoi(value) != 3) {
-                LOGF("failed to parse \"%s\": not an osu!mania beatmap (%s)", args->file->name, line);
+                LOGF("failed to parse \"%s\": not an osu!mania beatmap (%s)", args->difficulty->file_name, line);
                 return false;
             }
             break;
@@ -440,7 +511,7 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
 
     case SECTION_TIMING_POINTS:
         if (params_count != 8) {
-            LOGF("failed to parse \"%s\": invalid timing point (\"%s\" at line %d)", args->file->name, line, lineno);
+            LOGF("failed to parse \"%s\": invalid timing point (\"%s\" at line %d)", args->difficulty->file_name, line, lineno);
             return false;
         }
 
@@ -456,7 +527,7 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
         float           SV              = args->difficulty->SV;
 
         if (is_first_tm && !is_uninherited) {
-            LOGF("failed to parse \"%s\": first timing point can not be inhereited (\"%s\" at line %d)", args->file->name, line, lineno);
+            LOGF("failed to parse \"%s\": first timing point can not be inhereited (\"%s\" at line %d)", args->difficulty->file_name, line, lineno);
             return false;
         }
 
@@ -476,7 +547,7 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
 
     case SECTION_HITOBJECTS:
         if (params_count < 5) {
-            LOGF("failed to parse \"%s\": invalid hit object (\"%s\" at line %d)", args->file->name, line, lineno);
+            LOGF("failed to parse \"%s\": invalid hit object (\"%s\" at line %d)", args->difficulty->file_name, line, lineno);
             return false;
         }
 
@@ -513,6 +584,8 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
 }
 
 const char* skip_space(const char* s) {
+    assert(s != NULL);
+
     while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
     return s;
 }
