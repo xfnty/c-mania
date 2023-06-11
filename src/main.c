@@ -27,12 +27,6 @@ void load_beatmap(const char* path);
 
 int main(int argc, const char *argv[]) {
     init(argc, argv);
-
-    // InitWindow(width, height, "CMania");
-
-    // while (!WindowShouldClose())
-    //     update();
-
     deinit();
     return 0;
 }
@@ -48,16 +42,7 @@ void init(int argc, const char *argv[]) {
     load_beatmap(argv[1]);
 }
 
-void update() {
-    // BeginDrawing();
-    // ClearBackground(WHITE);
-    // EndDrawing();
-
-    // glfwSetWindowShouldClose(GetWindowHandle(), true);
-}
-
 void deinit() {
-    // CloseWindow();
     logging_shutdown();
 }
 

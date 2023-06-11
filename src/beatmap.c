@@ -1,3 +1,13 @@
+/**
+ * @defgroup   BEATMAP beatmap
+ *
+ * @brief      This file implements beatmap parser and loader.
+ *             Reference: https://osu.ppy.sh/wiki/en/Client/File_formats/Osu_(file_format)
+ *
+ * @author     xfnty (github.com)
+ * @date       2023
+ */
+
 #include <beatmap.h>
 
 #include <stddef.h>
@@ -60,6 +70,7 @@ typedef struct {
 typedef kvec_t(file_t) beatmapset_files_t;
 
 typedef struct {
+    beatmap_t* beatmap;
     difficulty_t*   difficulty;
     file_t*         file;
 } ini_callback_args_t;
@@ -67,7 +78,7 @@ typedef struct {
 
 /* local functions */
 static bool load_files(beatmapset_files_t* files, const char* path);
-static bool parse_difficulty(file_t file, difficulty_t* difficulty);
+static bool parse_difficulty(file_t file, beatmap_t* beatmap, difficulty_t* difficulty);
 static int  ini_callback(void* user, const char* section, const char* line, int lineno);
 static const char* skip_space(const char* s);
 
@@ -91,7 +102,7 @@ bool beatmap_load(beatmap_t* beatmap, const char* path) {
     parse_time = TIME();
     for (int i = 0; i < kv_size(files); i++) {
         difficulty_t diff;
-        if (parse_difficulty(kv_A(files, i), &diff))
+        if (parse_difficulty(kv_A(files, i), beatmap, &diff))
             kv_push(difficulty_t, beatmap->difficulties, diff);
     }
     parse_time = TIME() - parse_time;
@@ -127,13 +138,63 @@ void beatmap_destroy(beatmap_t* beatmap) {
 }
 
 void beatmap_debug_print(beatmap_t* beatmap) {
+    LOG("\nBeatmap info:");
+    printf(
+        "\tid: %d\n"
+        "\ttitle: %s\n"
+        "\tartist: %s\n"
+        "\tcreator: %s\n"
+        "\tsources: %s\n"
+        "\ttags: %s\n"
+        "Difficulties[%lu]:\n",
+        beatmap->id,
+        beatmap->title,
+        beatmap->artist,
+        beatmap->creator,
+        beatmap->sources,
+        beatmap->tags,
+        kv_size(beatmap->difficulties)
+    );
+    for (int i = 0; i < kv_size(beatmap->difficulties); i++) {
+        difficulty_t* d = &kv_A(beatmap->difficulties, i);
+        printf(
+            "\tformat: v%d\n"
+            "\tid: %d\n"
+            "\tname: %s\n"
+            "\taudio: %s\n"
+            "\tbackground: %s\n"
+            "\tHP: %.1f\n"
+            "\tCS: %.1f\n"
+            "\tOD: %.1f\n"
+            "\tAR: %.1f\n"
+            "\tSV: %.1f\n"
+            "\tRating: %.2f\n"
+            "\tbreaks[%lu]\n"
+            "\ttiming points[%lu]\n"
+            "\thitobjects[%lu]\n",
+            d->format_version,
+            d->id,
+            d->name,
+            d->audio_filename,
+            d->background_filename,
+            d->HP,
+            d->CS,
+            d->OD,
+            d->AR,
+            d->SV,
+            d->star_rating,
+            kv_size(d->breaks),
+            kv_size(d->timing_points),
+            kv_size(d->hitobjects)
+        );
+    }
 }
 
-timing_point_t* DIFFICULTY_get_timing_point_for(difficulty_t* difficulty, seconds_t time) {
+timing_point_t* difficulty_get_timing_point_for(difficulty_t* difficulty, seconds_t time) {
     return NULL;
 }
 
-playfield_event_t* DIFFICULTY_get_playfield_event_for(difficulty_t* difficulty, seconds_t time, int column, bool find_nearest) {
+playfield_event_t* difficulty_get_playfield_event_for(difficulty_t* difficulty, seconds_t time, int column, bool find_nearest) {
     return NULL;
 }
 
@@ -220,10 +281,10 @@ bool load_files(beatmapset_files_t* files, const char* path) {
     return true;
 }
 
-bool parse_difficulty(file_t file, difficulty_t* difficulty) {
+bool parse_difficulty(file_t file, beatmap_t* beatmap, difficulty_t* difficulty) {
     memset(difficulty, 0, sizeof(difficulty_t));
 
-    ini_callback_args_t args = { difficulty, &file };
+    ini_callback_args_t args = { beatmap, difficulty, &file };
     int err = ini_parse_string(file.data, ini_callback, &args);
     if (err > 0) {
         return false;
@@ -244,6 +305,7 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
     char value[256]     = {0};
     char** params       = NULL;
     int params_count    = 0;
+    int event_type      = 0;
 
     khint_t key_hash;
     khint_t section_hash = (section) ? kh_str_hash_func(section) : 0;
@@ -257,6 +319,7 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
     else {
         params_count = 0;
         params = (char**)TextSplit(line, ',', &params_count);
+        event_type = params[0][0] - '0';
     }
 
     switch (section_hash) {
@@ -283,10 +346,16 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
     case SECTION_METADATA:
         switch (key_hash) {
         case KEY_TITLE:
+            if (args->beatmap->title[0] != '\0')
+                STRCP(args->beatmap->title, value);
             break;
         case KEY_ARTIST:
+            if (args->beatmap->artist[0] != '\0')
+                STRCP(args->beatmap->artist, value);
             break;
         case KEY_CREATOR:
+            if (args->beatmap->creator[0] != '\0')
+                STRCP(args->beatmap->creator, value);
             break;
         case KEY_VERSION:
             STRCP(args->difficulty->name, value);
@@ -315,16 +384,72 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
         break;
 
     case SECTION_EVENTS:
+        if (event_type == 0) {
+            params[2][strlen(params[2]) - 1] = '\0';
+            STRCP(args->difficulty->background_filename, params[2] + 1);
+        }
+        else if (event_type == 2) {
+            break_event_t b;
+            b.start_time = atoi(params[1]);
+            b.end_time = atoi(params[2]);
+            kv_push(break_event_t, args->difficulty->breaks, b);
+        }
         break;
 
     case SECTION_TIMING_POINTS:
+        if (params_count != 8) {
+            LOGF("failed to parse \"%s\": invalid timing point (\"%s\" at line %d)", args->file->name, line, lineno);
+            return false;
+        }
+
+        seconds_t       start_time      = atoi(params[0]) / 1000.0f;
+        seconds_t       length          = atoi(params[1]) / 1000.0f;
+        int             meter           = atoi(params[2]);
+        int             sample_set      = atoi(params[3]);
+        int             sample_index    = atoi(params[4]);
+        percentage_t    volume          = atoi(params[5]) / 100.0f;
+        bool            is_uninherited  = atoi(params[6]) == 1;
+        bool            effects         = atoi(params[7]);
+        bool            is_first_tm     = kv_size(args->difficulty->timing_points) == 0;
+        float           SV              = args->difficulty->SV;
+
+        if (is_first_tm && !is_uninherited) {
+            LOGF("failed to parse \"%s\": first timing point can not be inhereited (\"%s\" at line %d)", args->file->name, line, lineno);
+            return false;
+        }
+
+        timing_point_t prev_tm = (is_first_tm) ? (timing_point_t){0} : kv_A(args->difficulty->timing_points, kv_size(args->difficulty->timing_points) - 1);
+
+        timing_point_t tm = (timing_point_t) {
+            .start_time     = start_time,
+            .beat_length    = (is_uninherited) ? (length) : (prev_tm.beat_length),
+            .SV             = (is_uninherited) ? (SV)     : (SV * (tm.beat_length / 100.0f)),
+            .meter          = meter,
+            .volume         = volume,
+            .kiai_enabled   = effects & 0x1
+        };
+
+        kv_push(timing_point_t, args->difficulty->timing_points, tm);
         break;
 
     case SECTION_HITOBJECTS:
+        if (params_count < 5) {
+            LOGF("failed to parse \"%s\": invalid hit object (\"%s\" at line %d)", args->file->name, line, lineno);
+            return false;
+        }
+
+        int x        = atoi(params[0]);
+        int y        = atoi(params[1]);
+        int type     = atoi(params[2]);
+        int hitsound = atoi(params[3]);
+        bool is_hold = type == 128;
+
+        // TODO
+
         break;
 
     case SECTION_NULL:
-        // printf("format version is v%d\n", atoi(TextSubtext(line, 17, strlen(line) - 17)));
+        args->difficulty->format_version = atoi(TextSubtext(line, 17, strlen(line) - 17));
         break;
     }
 

@@ -39,7 +39,6 @@ typedef struct {
 
 typedef struct {  // There's no concept of inherited and uninherited timing points
     seconds_t       start_time;
-    seconds_t       end_time;
     seconds_t       beat_length;
     float           SV;
     float           meter;
@@ -69,8 +68,8 @@ typedef struct {
 
 typedef struct {
     id_t        id;
+    int         format_version;
     char        name[STRSIZE];
-    char        url[STRSIZE];
 
     Music       audio;
     seconds_t   audio_length;

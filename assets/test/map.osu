@@ -7,7 +7,46 @@ PreviewTime: 103247
 Countdown: 0
 SampleSet: Soft
 StackLeniency: 0.7
-Mode: 0
+Mode: 3
 LetterboxInBreaks: 0
 WidescreenStoryboard: 0
 
+[Metadata]
+Title:Flower Dance
+TitleUnicode:Flower Dance
+Artist:DJ OKAWARI
+ArtistUnicode:DJ OKAWARI
+Creator:Narcissu
+Version:apple's Hard
+Source:Sooooorce
+Tags:a cup of coffee appleeaterx little cloudsplash16 Critical_Star
+BeatmapID:1046358
+BeatmapSetID:476691
+
+[Difficulty]
+HPDrainRate:4.5
+CircleSize:3.8
+OverallDifficulty:6
+ApproachRate:7.3
+SliderMultiplier:2.1
+SliderTickRate:1
+
+[Events]
+//Background and Video events
+0,0,"BG.jpg",0,0
+2,0,100
+
+[TimingPoints]
+26597,600,4,2,1,40,1,0
+26597,-83.3333333333333,4,2,1,40,0,0
+45797,-71.4285714285714,4,2,1,60,0,1
+64997,-71.4285714285714,4,2,1,40,0,0
+103397,-62.5,4,2,1,60,0,1
+
+[HitObjects]
+448,192,26597,5,0,0:0:0:0:
+64,192,26897,1,0,0:0:0:0:
+192,192,27347,1,0,0:0:0:0:
+320,192,27497,1,0,0:0:0:0:
+448,192,27647,1,0,0:0:0:0:
+64,192,27797,1,0,0:0:0:0:
