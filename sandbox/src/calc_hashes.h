@@ -5,25 +5,10 @@
 
 
 void calc() {
-    f("General");
-    f("Metadata");
-    f("Difficulty");
-    f("Events");
-    f("TimingPoints");
-    f("HitObjects");
-    f("AudioFilename");
-    f("AudioLeadIn");
-    f("PreviewTime");
-    f("StackLeniency");
-    f("Mode");
-    f("Title");
-    f("Artist");
-    f("Creator");
-    f("Version");
-    f("HPDrainRate");
-    f("CircleSize");
-    f("OverallDifficulty");
-    f("ApproachRate");
-    f("SliderMultiplier");
-    f("SliderTickRate");
+    f("TitleUnicode");
+    f("ArtistUnicode");
+    f("Source");
+    f("Tags");
+    f("BeatmapID");
+    f("BeatmapSetID");
 }

@@ -28,19 +28,22 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
 
 int main(int argc, char const *argv[])
 {
-    logging_init();
+    calc();
 
-    beatmapset_files_t files;
-    kv_init(files);
 
-    load_files(&files, "assets/test.osz");
+    // logging_init();
 
-    for (int i = 0; i < kv_size(files) && i <= 1; i++) {
-        file_t* file = &kv_A(files, i);
-        printf("File \"%s\" (%s)\n", file->name, humanize_bytesize(file->size));
-        ini_parse_string(file->data, ini_callback, NULL);
-    }
+    // beatmapset_files_t files;
+    // kv_init(files);
 
-    logging_shutdown();
+    // load_files(&files, "assets/test.osz");
+
+    // for (int i = 0; i < kv_size(files) && i <= 1; i++) {
+    //     file_t* file = &kv_A(files, i);
+    //     printf("File \"%s\" (%s)\n", file->name, humanize_bytesize(file->size));
+    //     ini_parse_string(file->data, ini_callback, NULL);
+    // }
+
+    // logging_shutdown();
     return 0;
 }

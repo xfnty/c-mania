@@ -16,6 +16,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
+#include <math.h>
 
 #define SCOPE_NAME "beatmap"
 #include <logging.h>
@@ -23,6 +24,7 @@
 
 #include <humanize.h>
 #include <raylib.h>
+#include <raymath.h>
 #include <zip.h>
 #include <kvec.h>
 #include <khash.h>
@@ -42,9 +44,15 @@
 #define KEY_PREVIEW_TIME       376647317
 #define KEY_MODE               2403779
 #define KEY_TITLE              80818744
+#define KEY_TITLE_UNICODE      607220101
 #define KEY_ARTIST             1969736551
+#define KEY_ARTIST_UNICODE     -1526467210
 #define KEY_CREATOR            -1601759220
 #define KEY_VERSION            2016261304
+#define KEY_SOURCES            -1812638661
+#define KEY_TAGS               2598969
+#define KEY_BEATMAP_ID         215463265
+#define KEY_BEATMAPSET_ID      -2099647785
 #define KEY_HP                 -1604895024
 #define KEY_CS                 882574609
 #define KEY_OD                 955053000
@@ -145,19 +153,18 @@ void beatmap_debug_print(beatmap_t* beatmap) {
         "\tartist: %s\n"
         "\tcreator: %s\n"
         "\tsources: %s\n"
-        "\ttags: %s\n"
-        "Difficulties[%lu]:\n",
+        "\ttags: %s\n",
         beatmap->id,
         beatmap->title,
         beatmap->artist,
         beatmap->creator,
         beatmap->sources,
-        beatmap->tags,
-        kv_size(beatmap->difficulties)
+        beatmap->tags
     );
     for (int i = 0; i < kv_size(beatmap->difficulties); i++) {
         difficulty_t* d = &kv_A(beatmap->difficulties, i);
         printf(
+            "Difficulty[%d]\n"
             "\tformat: v%d\n"
             "\tid: %d\n"
             "\tname: %s\n"
@@ -172,6 +179,7 @@ void beatmap_debug_print(beatmap_t* beatmap) {
             "\tbreaks[%lu]\n"
             "\ttiming points[%lu]\n"
             "\thitobjects[%lu]\n",
+            i,
             d->format_version,
             d->id,
             d->name,
@@ -328,12 +336,15 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
         case KEY_AUDIO_FILENAME:
             STRCP(args->difficulty->audio_filename, value);
             break;
+
         case KEY_AUDIO_LEAD_IN:
             args->difficulty->audio_lead_in = atof(value);
             break;
+
         case KEY_PREVIEW_TIME:
             args->difficulty->preview_time = atof(value);
             break;
+
         case KEY_MODE:
             if (atoi(value) != 3) {
                 LOGF("failed to parse \"%s\": not an osu!mania beatmap (%s)", args->file->name, line);
@@ -346,19 +357,46 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
     case SECTION_METADATA:
         switch (key_hash) {
         case KEY_TITLE:
-            if (args->beatmap->title[0] != '\0')
+            if (args->beatmap->title[0] == '\0')
                 STRCP(args->beatmap->title, value);
             break;
+
+        case KEY_TITLE_UNICODE:
+            break;
+
         case KEY_ARTIST:
-            if (args->beatmap->artist[0] != '\0')
+            if (args->beatmap->artist[0] == '\0')
                 STRCP(args->beatmap->artist, value);
             break;
+
+        case KEY_ARTIST_UNICODE:
+            break;
+
         case KEY_CREATOR:
-            if (args->beatmap->creator[0] != '\0')
+            if (args->beatmap->creator[0] == '\0')
                 STRCP(args->beatmap->creator, value);
             break;
+
         case KEY_VERSION:
             STRCP(args->difficulty->name, value);
+            break;
+
+        case KEY_SOURCES:
+            if (args->beatmap->sources[0] == '\0')
+                STRCP(args->beatmap->sources, value);
+            break;
+
+        case KEY_TAGS:
+            if (args->beatmap->tags[0] == '\0')
+                STRCP(args->beatmap->tags, value);
+            break;
+
+        case KEY_BEATMAP_ID:
+            args->difficulty->id = atoi(value);
+            break;
+
+        case KEY_BEATMAPSET_ID:
+            args->beatmap->id = atoi(value);
             break;
         }
         break;
@@ -368,15 +406,19 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
         case KEY_HP:
             args->difficulty->HP = atof(value);
             break;
+
         case KEY_OD:
             args->difficulty->OD = atof(value);
             break;
+
         case KEY_CS:
             args->difficulty->CS = atof(value);
             break;
+
         case KEY_AR:
             args->difficulty->AR = atof(value);
             break;
+
         case KEY_SV:
             args->difficulty->SV = atof(value);
             break;
@@ -438,14 +480,28 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
             return false;
         }
 
-        int x        = atoi(params[0]);
-        int y        = atoi(params[1]);
-        int type     = atoi(params[2]);
-        int hitsound = atoi(params[3]);
-        bool is_hold = type == 128;
+        int         x           = atoi(params[0]);
+        int         y           = atoi(params[1]);
+        seconds_t   time        = atoi(params[2]) / 1000.0f;
+        int         type        = atoi(params[3]);
+        int         hitsound    = atoi(params[4]);
+        bool        is_hold     = type == 128;
+        int         column      = Clamp(
+            floorf(atoi(params[0]) * args->difficulty->CS / 512.0f),
+            0,
+            args->difficulty->CS - 1
+        );
 
-        // TODO
+        if (is_hold)
+            strchr(params[5], ':')[0] = '\0';
 
+        hitobject_t ho = (hitobject_t) {
+            .column     = column,
+            .start_time = time,
+            .end_time   = (is_hold) ? atoi(params[5]) / 1000.0f : 0
+        };
+
+        kv_push(hitobject_t, args->difficulty->hitobjects, ho);
         break;
 
     case SECTION_NULL:
