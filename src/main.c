@@ -16,15 +16,19 @@
 // Variables
 static const int    width = 280;
 static const int    height = 480;
+static const float  playfield_to_window_scale = 480.0f / height;
 static beatmap_t    beatmap;
 static int          difficulty_i;
 static float        judgement_line_y = 0;
+static int          timing_point_render_range_start = 0;
+static int          timing_point_render_range_end = 0;
 
 // Mainloop
 static void init(int argc, const char *argv[]);
 static void update();
 static void update_difficulty_changer();
 static void update_judgement_line_y();
+static void update_timing_point_render_range();
 static void draw_timing_points();
 static void deinit();
 
@@ -60,11 +64,14 @@ void init(int argc, const char *argv[]) {
 
     InitWindow(width, height, "CMania");
     SetTargetFPS(60);
+
+    timing_point_render_range_end = kv_size(kv_A(beatmap.difficulties, difficulty_i).timing_points);
 }
 
 void update() {
     update_difficulty_changer();
     update_judgement_line_y();
+    update_timing_point_render_range();
     draw_timing_points();
     draw_info();
 }
@@ -90,6 +97,7 @@ void load_beatmap(const char* path) {
 void draw_info() {
     DrawText(TextFormat("[%d] %s", difficulty_i, kv_A(beatmap.difficulties, difficulty_i).name), 0, 0, 16, BLACK);
     DrawText(TextFormat("pos: %.0f", judgement_line_y), 0, 18, 16, GRAY);
+    DrawText(TextFormat("range: %d-%d (%d)", timing_point_render_range_start, timing_point_render_range_end, timing_point_render_range_end - timing_point_render_range_start), 0, 36, 16, GRAY);
 }
 
 void update_difficulty_changer() {
@@ -105,10 +113,25 @@ void update_judgement_line_y() {
     judgement_line_y += GetMouseWheelMove() * 100;
 }
 
+void update_timing_point_render_range() {
+    float upper_y = judgement_line_y + (height / 2.0f * playfield_to_window_scale);
+    float lower_y = judgement_line_y - (height / 2.0f * playfield_to_window_scale);
+
+    difficulty_t* d = &kv_A(beatmap.difficulties, difficulty_i);
+    for (int i = 0; i < kv_size(d->timing_points); i++) {
+        timing_point_t* tm = &kv_A(d->timing_points, i);
+
+        timing_point_render_range_start = (tm->y < lower_y) ? i : timing_point_render_range_start;
+        // NOTE: inclusive end
+        timing_point_render_range_end = (tm->y < upper_y) ? i : timing_point_render_range_end;
+    }
+}
+
 void draw_timing_points() {
     difficulty_t* d = &kv_A(beatmap.difficulties, difficulty_i);
 
-    for (int i = 0; i < kv_size(d->timing_points); i++) {
+    int i = timing_point_render_range_start;
+    for (; i < MIN(timing_point_render_range_end + 1, kv_size(d->timing_points)); i++) {
         timing_point_t* tm = &kv_A(d->timing_points, i);
         float y = playfield_y_to_window_y(tm->y);
         DrawLine(0, y, width, y, GREEN);
@@ -121,5 +144,5 @@ void draw_timing_points() {
 
 float playfield_y_to_window_y(float y) {
     y = -y + judgement_line_y;
-    return (y / 480.0f * height) + height / 2.0f;
+    return (y * playfield_to_window_scale) + height / 2.0f;
 }

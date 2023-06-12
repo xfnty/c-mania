@@ -398,11 +398,14 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
             ? (kv_A(args->difficulty->timing_points, kv_size(args->difficulty->timing_points) - 1))
             : ((timing_point_t){0});
 
+        float BPM = (is_uninherited) ? (roundf(60000 / beat_length)) : (prev_tm.BPM);
+        float SV = (is_uninherited) ? (args->difficulty->SV) : (args->difficulty->SV * (100.0f / (float)(-beat_length)));
+
         timing_point_t tm = (timing_point_t) {
             .time           = start_time,
-            .BPM            = (is_uninherited) ? (roundf(60000 / beat_length)) : (prev_tm.BPM),
-            .SV             = (is_uninherited) ? (args->difficulty->SV) : (args->difficulty->SV * (100.0f / (float)(-beat_length))),
-            .y              = (is_first_tm) ? (0) : (prev_tm.y + (100 * prev_tm.SV) * (start_time - prev_tm.time))
+            .BPM            = BPM,
+            .SV             = SV,
+            .y              = (is_first_tm) ? (0) : (prev_tm.y + (100 * prev_tm.SV) * (start_time - prev_tm.time) / (60.0f / prev_tm.BPM))
         };  // FIXME:                           \_  this is probably untrue because tm.time of the first timing point might be negative.
             //                                      It means that it should probably be calculated with parameters of the current timing point.
         kv_push(timing_point_t, args->difficulty->timing_points, tm);
