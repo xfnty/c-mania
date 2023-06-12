@@ -34,6 +34,7 @@
 
 /* constants */
 // Calculated using kh_str_hash_func("Whatever")
+// SECTION_NULL is triggered for "osu file format vXX"
 #define SECTION_NULL           0
 #define SECTION_GENERAL        1584505032
 #define SECTION_METADATA       -385360049
@@ -78,19 +79,19 @@ typedef struct {
 typedef kvec_t(file_t) beatmapset_files_t;
 
 typedef struct {
-    beatmap_t* beatmap;
+    beatmap_t*      beatmap;
     difficulty_t*   difficulty;
 } ini_callback_args_t;
 
 
 /* local functions */
-static bool load_files(beatmapset_files_t* files, const char* path);
-static bool parse_difficulty(file_t* file, beatmap_t* beatmap, difficulty_t* difficulty);
-static bool preprocess_difficulty_events(difficulty_t* difficulty);
-static int  ini_callback(void* user, const char* section, const char* line, int lineno);
-static const char* skip_space(const char* s);
-static bool sort_hitobjects(hitobject_t a, hitobject_t b);
-static bool sort_timing_points(timing_point_t a, timing_point_t b);
+static bool         load_files(beatmapset_files_t* files, const char* path);
+static bool         parse_difficulty(file_t* file, beatmap_t* beatmap, difficulty_t* difficulty);
+static bool         preprocess_difficulty_events(difficulty_t* difficulty);
+static int          ini_callback(void* user, const char* section, const char* line, int lineno);
+static const char*  skip_space(const char* s);
+static bool         sort_hitobjects(hitobject_t a, hitobject_t b);
+static bool         sort_timing_points(timing_point_t a, timing_point_t b);
 KSORT_INIT(hitobject_t, hitobject_t, sort_hitobjects);
 KSORT_INIT(timing_point_t, timing_point_t, sort_timing_points);
 
@@ -168,20 +169,20 @@ void beatmap_debug_print(beatmap_t* beatmap) {
         const int MAX_OBJECTS_SHOWN = 100;
 
         printf("\tTiming points[%lu]:\n", kv_size(d->timing_points));
-        // for (int j = 0; j < MIN(MAX_OBJECTS_SHOWN, kv_size(d->timing_points)); j++) {
-        //     timing_point_t* tm = &kv_A(d->timing_points, j);
-        //     printf("\t\tTM[%d] at %f SV=%f BPM=%f Y=%f\n", j, tm->time, tm->SV, tm->BPM, tm->y);
-        // }
-        // if (kv_size(d->timing_points) > MAX_OBJECTS_SHOWN)
-        //     printf("\t\t...\n");
+        for (int j = 0; j < MIN(MAX_OBJECTS_SHOWN, kv_size(d->timing_points)); j++) {
+            timing_point_t* tm = &kv_A(d->timing_points, j);
+            printf("\t\tTM[%d] at %f SV=%f BPM=%f Y=%f\n", j, tm->time, tm->SV, tm->BPM, tm->y);
+        }
+        if (kv_size(d->timing_points) > MAX_OBJECTS_SHOWN)
+            printf("\t\t...\n");
 
         printf("\tHit objects[%lu]:\n", kv_size(d->hitobjects));
-        // for (int j = 0; j < MIN(MAX_OBJECTS_SHOWN, kv_size(d->hitobjects)); j++) {
-        //     hitobject_t* ho = &kv_A(d->hitobjects, j);
-        //     printf("\t\tHO[%d] at %f from %f COL=%d YS=%f YE=%f\n", j, ho->start_time, ho->end_time, ho->column, ho->start_y, ho->end_y);
-        // }
-        // if (kv_size(d->hitobjects) > MAX_OBJECTS_SHOWN)
-        //     printf("\t\t...\n");
+        for (int j = 0; j < MIN(MAX_OBJECTS_SHOWN, kv_size(d->hitobjects)); j++) {
+            hitobject_t* ho = &kv_A(d->hitobjects, j);
+            printf("\t\tHO[%d] at %f from %f COL=%d YS=%f YE=%f\n", j, ho->start_time, ho->end_time, ho->column, ho->start_y, ho->end_y);
+        }
+        if (kv_size(d->hitobjects) > MAX_OBJECTS_SHOWN)
+            printf("\t\t...\n");
     }
 }
 
@@ -419,7 +420,7 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
 
         int         x           = atoi(params[0]);
         int         y           = atoi(params[1]);
-        seconds_t   time        = atoi(params[2]) / 1000.0f;
+        seconds_t   time_strt   = atoi(params[2]) / 1000.0f; // FIXME: WTFFF
         int         type        = atoi(params[3]);
         int         hitsound    = atoi(params[4]);
         bool        is_hold     = type == 128;
@@ -432,11 +433,34 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
         if (is_hold)
             strchr(params[5], ':')[0] = '\0';
 
+        // FIXME: This is obviously not the optimal solution
+        timing_point_t* atm = NULL;
+        for (int i = 0; i < kv_size(args->difficulty->timing_points); i++) {
+            timing_point_t* t = &kv_A(args->difficulty->timing_points, i);
+            if (t->time <= time_strt)
+                atm = t;
+            else
+                break;
+        }
+
+        if (atm == NULL) {
+            LOGF(
+                "failed to parse \"%s\":"
+                " hit object %d does not have associated timing point"
+                " (\"%s\" at line %d)",
+                args->difficulty->file_name,
+                kv_size(args->difficulty->hitobjects) - 1,
+                line,
+                lineno
+            );
+            return false;
+        }
+
         hitobject_t ho = (hitobject_t) {
             .column     = column,
-            .start_time = time,
-            .start_y    = 0,
-            .end_time   = (is_hold) ? atoi(params[5]) / 1000.0f : 0,
+            .start_time = time_strt,
+            .start_y    = atm->y + (100 * atm->SV) * (time_strt - atm->time) / (60.0f / atm->BPM),
+            .end_time   = 0,// (is_hold) ? atoi(params[5]) / 1000.0f : 0,
             .end_y      = 0
         };
 

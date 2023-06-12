@@ -15,12 +15,12 @@
 
 // Variables
 static int          width = 280;
-static int          height = 240;
+static int          height = 480;
 static beatmap_t    beatmap;
 static int          difficulty_i;
 static float        judgement_line_y = 0;
-static int          timing_point_render_range_start = 0;
-static int          timing_point_render_range_end = 0;
+static int          timing_point_render_range[2] = {0};
+static int          hitobject_render_range[2] = {0};
 static float        playfield_to_window_scale = 1;
 
 // Mainloop
@@ -29,7 +29,10 @@ static void update();
 static void update_difficulty_changer();
 static void update_judgement_line_y();
 static void update_timing_point_render_range();
+static void update_hitobject_render_range();
 static void draw_timing_points();
+static void draw_hitobjects();
+static void draw_judgement_line();
 static void deinit();
 
 // Support functions
@@ -66,15 +69,19 @@ void init(int argc, const char *argv[]) {
     SetWindowState(FLAG_WINDOW_RESIZABLE);
     SetTargetFPS(60);
 
-    timing_point_render_range_end = kv_size(kv_A(beatmap.difficulties, difficulty_i).timing_points);
+    timing_point_render_range[1]    = kv_size(kv_A(beatmap.difficulties, difficulty_i).timing_points);
+    hitobject_render_range[1]       = kv_size(kv_A(beatmap.difficulties, difficulty_i).hitobjects);
 }
 
 void update() {
     update_difficulty_changer();
     update_judgement_line_y();
     update_timing_point_render_range();
+    update_hitobject_render_range();
+    draw_hitobjects();
     draw_timing_points();
     draw_info();
+    draw_judgement_line();
 
     width = GetScreenWidth();
     height = GetScreenHeight();
@@ -105,17 +112,25 @@ void draw_info() {
     // DrawText(TextFormat("range: %d-%d (%d)", timing_point_render_range_start, timing_point_render_range_end, timing_point_render_range_end - timing_point_render_range_start), 0, 36, 16, GRAY);
 }
 
+void draw_judgement_line() {
+    DrawLine(0, height / 2.0f, width, height / 2.0f, GRAY);
+}
+
 void update_difficulty_changer() {
     if (IsKeyPressed(KEY_RIGHT)) {
         difficulty_i += 1;
         judgement_line_y = 0;
+        timing_point_render_range[0] = 0;
+        timing_point_render_range[1] = 0;
+        hitobject_render_range[0] = 0;
+        hitobject_render_range[1] = 0;
     }
 
     difficulty_i %= kv_size(beatmap.difficulties);
 }
 
 void update_judgement_line_y() {
-    judgement_line_y += GetMouseWheelMove() * 100;
+    judgement_line_y += GetMouseWheelMove() * (IsKeyDown(KEY_LEFT_SHIFT) ? 1000 : 100);
 }
 
 void update_timing_point_render_range() {
@@ -126,22 +141,52 @@ void update_timing_point_render_range() {
     for (int i = 0; i < kv_size(d->timing_points); i++) {
         timing_point_t* tm = &kv_A(d->timing_points, i);
 
-        timing_point_render_range_start = (tm->y < lower_y) ? i : timing_point_render_range_start;
+        timing_point_render_range[0] = (tm->y < lower_y) ? i : timing_point_render_range[0];
         // NOTE: inclusive end
-        timing_point_render_range_end = (tm->y < upper_y) ? i : timing_point_render_range_end;
+        timing_point_render_range[1] = (tm->y < upper_y) ? i : timing_point_render_range[1];
+    }
+}
+
+void update_hitobject_render_range() {
+    float upper_y = judgement_line_y + (height / 2.0f / playfield_to_window_scale);
+    float lower_y = judgement_line_y - (height / 2.0f / playfield_to_window_scale);
+
+    difficulty_t* d = &kv_A(beatmap.difficulties, difficulty_i);
+    for (int i = 0; i < kv_size(d->hitobjects); i++) {
+        hitobject_t* ho = &kv_A(d->hitobjects, i);
+
+        hitobject_render_range[0] = (ho->start_y < lower_y) ? i : hitobject_render_range[0];
+        hitobject_render_range[1] = (ho->start_y < upper_y) ? i : hitobject_render_range[1];
     }
 }
 
 void draw_timing_points() {
     difficulty_t* d = &kv_A(beatmap.difficulties, difficulty_i);
 
-    int i = timing_point_render_range_start;
-    for (; i < MIN(timing_point_render_range_end + 1, kv_size(d->timing_points)); i++) {
+    int i = timing_point_render_range[0];
+    for (; i < MIN(timing_point_render_range[1] + 1, kv_size(d->timing_points)); i++) {
         timing_point_t* tm = &kv_A(d->timing_points, i);
+
         float y = playfield_y_to_window_y(tm->y);
+
         DrawLine(0, y, width, y, GREEN);
         DrawText(TextFormat("%.1f", tm->y), 4, y - 12, 12, GREEN);
         DrawText(TextFormat("%.1f %.1f", tm->BPM, tm->SV), width - 50, y - 12, 12, GREEN);
+    }
+
+    DrawLine(0, playfield_y_to_window_y(0), width, playfield_y_to_window_y(0), BLACK);
+}
+
+void draw_hitobjects() {
+    difficulty_t* d = &kv_A(beatmap.difficulties, difficulty_i);
+
+    int i = hitobject_render_range[0];
+    for (; i < MIN(hitobject_render_range[1] + 1, kv_size(d->hitobjects)); i++) {
+        hitobject_t* ho = &kv_A(d->hitobjects, i);
+
+        float y = playfield_y_to_window_y(ho->start_y);
+
+        DrawRectangle((width / d->CS * ho->column), y - 2, width / d->CS, 3, RED);
     }
 
     DrawLine(0, playfield_y_to_window_y(0), width, playfield_y_to_window_y(0), BLACK);
