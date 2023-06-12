@@ -14,14 +14,14 @@
 
 
 // Variables
-static const int    width = 280;
-static const int    height = 480;
-static const float  playfield_to_window_scale = 480.0f / height;
+static int          width = 280;
+static int          height = 240;
 static beatmap_t    beatmap;
 static int          difficulty_i;
 static float        judgement_line_y = 0;
 static int          timing_point_render_range_start = 0;
 static int          timing_point_render_range_end = 0;
+static float        playfield_to_window_scale = 1;
 
 // Mainloop
 static void init(int argc, const char *argv[]);
@@ -63,6 +63,7 @@ void init(int argc, const char *argv[]) {
     load_beatmap(argv[1]);
 
     InitWindow(width, height, "CMania");
+    SetWindowState(FLAG_WINDOW_RESIZABLE);
     SetTargetFPS(60);
 
     timing_point_render_range_end = kv_size(kv_A(beatmap.difficulties, difficulty_i).timing_points);
@@ -74,6 +75,10 @@ void update() {
     update_timing_point_render_range();
     draw_timing_points();
     draw_info();
+
+    width = GetScreenWidth();
+    height = GetScreenHeight();
+    playfield_to_window_scale = height / 480.0f;
 }
 
 void deinit() {
@@ -97,7 +102,7 @@ void load_beatmap(const char* path) {
 void draw_info() {
     DrawText(TextFormat("[%d] %s", difficulty_i, kv_A(beatmap.difficulties, difficulty_i).name), 0, 0, 16, BLACK);
     DrawText(TextFormat("pos: %.0f", judgement_line_y), 0, 18, 16, GRAY);
-    DrawText(TextFormat("range: %d-%d (%d)", timing_point_render_range_start, timing_point_render_range_end, timing_point_render_range_end - timing_point_render_range_start), 0, 36, 16, GRAY);
+    // DrawText(TextFormat("range: %d-%d (%d)", timing_point_render_range_start, timing_point_render_range_end, timing_point_render_range_end - timing_point_render_range_start), 0, 36, 16, GRAY);
 }
 
 void update_difficulty_changer() {
@@ -114,8 +119,8 @@ void update_judgement_line_y() {
 }
 
 void update_timing_point_render_range() {
-    float upper_y = judgement_line_y + (height / 2.0f * playfield_to_window_scale);
-    float lower_y = judgement_line_y - (height / 2.0f * playfield_to_window_scale);
+    float upper_y = judgement_line_y + (height / 2.0f / playfield_to_window_scale);
+    float lower_y = judgement_line_y - (height / 2.0f / playfield_to_window_scale);
 
     difficulty_t* d = &kv_A(beatmap.difficulties, difficulty_i);
     for (int i = 0; i < kv_size(d->timing_points); i++) {

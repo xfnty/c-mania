@@ -168,20 +168,20 @@ void beatmap_debug_print(beatmap_t* beatmap) {
         const int MAX_OBJECTS_SHOWN = 100;
 
         printf("\tTiming points[%lu]:\n", kv_size(d->timing_points));
-        for (int j = 0; j < MIN(MAX_OBJECTS_SHOWN, kv_size(d->timing_points)); j++) {
-            timing_point_t* tm = &kv_A(d->timing_points, j);
-            printf("\t\tTM[%d] at %f SV=%f BPM=%f Y=%f\n", j, tm->time, tm->SV, tm->BPM, tm->y);
-        }
-        if (kv_size(d->timing_points) > MAX_OBJECTS_SHOWN)
-            printf("\t\t...\n");
+        // for (int j = 0; j < MIN(MAX_OBJECTS_SHOWN, kv_size(d->timing_points)); j++) {
+        //     timing_point_t* tm = &kv_A(d->timing_points, j);
+        //     printf("\t\tTM[%d] at %f SV=%f BPM=%f Y=%f\n", j, tm->time, tm->SV, tm->BPM, tm->y);
+        // }
+        // if (kv_size(d->timing_points) > MAX_OBJECTS_SHOWN)
+        //     printf("\t\t...\n");
 
         printf("\tHit objects[%lu]:\n", kv_size(d->hitobjects));
-        for (int j = 0; j < MIN(MAX_OBJECTS_SHOWN, kv_size(d->hitobjects)); j++) {
-            hitobject_t* ho = &kv_A(d->hitobjects, j);
-            printf("\t\tHO[%d] at %f from %f COL=%d YS=%f YE=%f\n", j, ho->start_time, ho->end_time, ho->column, ho->start_y, ho->end_y);
-        }
-        if (kv_size(d->hitobjects) > MAX_OBJECTS_SHOWN)
-            printf("\t\t...\n");
+        // for (int j = 0; j < MIN(MAX_OBJECTS_SHOWN, kv_size(d->hitobjects)); j++) {
+        //     hitobject_t* ho = &kv_A(d->hitobjects, j);
+        //     printf("\t\tHO[%d] at %f from %f COL=%d YS=%f YE=%f\n", j, ho->start_time, ho->end_time, ho->column, ho->start_y, ho->end_y);
+        // }
+        // if (kv_size(d->hitobjects) > MAX_OBJECTS_SHOWN)
+        //     printf("\t\t...\n");
     }
 }
 
