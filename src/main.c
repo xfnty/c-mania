@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <raylib.h>
@@ -22,6 +23,10 @@ static float        judgement_line_y = 0;
 static int          timing_point_render_range[2] = {0};
 static int          hitobject_render_range[2] = {0};
 static float        playfield_to_window_scale = 1;
+static bool         autoplayer_enabled = true;
+static float        autoplayer_judgement_line_speed = 0;
+static Music        audio;
+static float        prev_audio_pos;
 
 // Mainloop
 static void init(int argc, const char *argv[]);
@@ -30,6 +35,8 @@ static void update_difficulty_changer();
 static void update_judgement_line_y();
 static void update_timing_point_render_range();
 static void update_hitobject_render_range();
+static void update_autoplayer();
+static void update_music();
 static void draw_timing_points();
 static void draw_hitobjects();
 static void draw_judgement_line();
@@ -58,19 +65,51 @@ int main(int argc, const char *argv[]) {
 void init(int argc, const char *argv[]) {
     logging_init();
 
+    ChangeDirectory(GetDirectoryPath(argv[0]));
+
     if (argc <= 1) {
         printf("Usage: %s <.osz/folder>\n", GetFileName(argv[0]));
         exit(0);
     }
 
+    if (TextIsEqual(GetFileExtension(argv[1]), ".osz")) {
+        LOG(".osz is not supported right now");
+        exit(-1);
+    }
     load_beatmap(argv[1]);
 
     InitWindow(width, height, "CMania");
     SetWindowState(FLAG_WINDOW_RESIZABLE);
     SetTargetFPS(60);
 
-    timing_point_render_range[1]    = kv_size(kv_A(beatmap.difficulties, difficulty_i).timing_points);
-    hitobject_render_range[1]       = kv_size(kv_A(beatmap.difficulties, difficulty_i).hitobjects);
+    difficulty_t* d = &kv_A(beatmap.difficulties, difficulty_i);
+
+    if (d->audio_filename[0] == '\0') {
+        LOG("Audio filename was not specified");
+        exit(-1);
+    }
+
+    if (!ChangeDirectory(argv[1])) {
+        LOGF("Failed to enter directory \"%s\"", argv[1]);
+        exit(-1);
+    }
+
+    InitAudioDevice();
+    if (!IsAudioDeviceReady()) {
+        LOG("Failed to initialize audio");
+        exit(-1);
+    }
+
+    audio = LoadMusicStream(d->audio_filename);
+    if (!IsMusicReady(audio)) {
+        LOGF("Failed to load \"%s\"", d->audio_filename);
+        exit(-1);
+    }
+    PlayMusicStream(audio);
+    SetMusicVolume(audio, 0.1);
+
+    timing_point_render_range[1]    = kv_size(d->timing_points);
+    hitobject_render_range[1]       = kv_size(d->hitobjects);
 }
 
 void update() {
@@ -78,6 +117,9 @@ void update() {
     update_judgement_line_y();
     update_timing_point_render_range();
     update_hitobject_render_range();
+    update_autoplayer();
+    update_music();
+
     draw_hitobjects();
     draw_timing_points();
     draw_info();
@@ -86,6 +128,8 @@ void update() {
     width = GetScreenWidth();
     height = GetScreenHeight();
     playfield_to_window_scale = height / 480.0f;
+
+    prev_audio_pos = GetMusicTimePlayed(audio);
 }
 
 void deinit() {
@@ -109,7 +153,7 @@ void load_beatmap(const char* path) {
 void draw_info() {
     DrawText(TextFormat("[%d] %s", difficulty_i, kv_A(beatmap.difficulties, difficulty_i).name), 0, 0, 16, BLACK);
     DrawText(TextFormat("pos: %.0f", judgement_line_y), 0, 18, 16, GRAY);
-    // DrawText(TextFormat("range: %d-%d (%d)", timing_point_render_range_start, timing_point_render_range_end, timing_point_render_range_end - timing_point_render_range_start), 0, 36, 16, GRAY);
+    DrawText(TextFormat("auto: %d spd=%.3f audio pos=%.1f", autoplayer_enabled, autoplayer_judgement_line_speed, IsMusicStreamPlaying(audio) ? GetMusicTimePlayed(audio) : 0), 0, 36, 16, (autoplayer_enabled) ? GREEN : GRAY);
 }
 
 void draw_judgement_line() {
@@ -124,13 +168,15 @@ void update_difficulty_changer() {
         timing_point_render_range[1] = 0;
         hitobject_render_range[0] = 0;
         hitobject_render_range[1] = 0;
+        autoplayer_enabled = false;
     }
 
     difficulty_i %= kv_size(beatmap.difficulties);
 }
 
 void update_judgement_line_y() {
-    judgement_line_y += GetMouseWheelMove() * (IsKeyDown(KEY_LEFT_SHIFT) ? 1000 : 100);
+    if (!autoplayer_enabled)
+        judgement_line_y += GetMouseWheelMove() * (IsKeyDown(KEY_LEFT_SHIFT) ? 1000 : 100);
 }
 
 void update_timing_point_render_range() {
@@ -142,7 +188,6 @@ void update_timing_point_render_range() {
         timing_point_t* tm = &kv_A(d->timing_points, i);
 
         timing_point_render_range[0] = (tm->y < lower_y) ? i : timing_point_render_range[0];
-        // NOTE: inclusive end
         timing_point_render_range[1] = (tm->y < upper_y) ? i : timing_point_render_range[1];
     }
 }
@@ -157,6 +202,50 @@ void update_hitobject_render_range() {
 
         hitobject_render_range[0] = (ho->start_y < lower_y) ? i : hitobject_render_range[0];
         hitobject_render_range[1] = (ho->start_y < upper_y) ? i : hitobject_render_range[1];
+    }
+}
+
+void update_autoplayer() {
+    // if (IsKeyPressed(KEY_SPACE)) {
+    //     autoplayer_enabled = !autoplayer_enabled;
+    //     judgement_line_y = 0;
+    //     SeekMusicStream(audio, 0);
+    //     PlayMusicStream(audio);
+    // }
+
+    autoplayer_judgement_line_speed = 0;
+
+    if (!autoplayer_enabled)
+        return;
+
+    difficulty_t* d = &kv_A(beatmap.difficulties, difficulty_i);
+    timing_point_t* atm = NULL;
+    for (int i = MAX(0, timing_point_render_range[0] - 1); i < MIN(timing_point_render_range[1] + 1, kv_size(d->timing_points)); i++) {
+        timing_point_t* tm = &kv_A(d->timing_points, i);
+        if (tm->y <= judgement_line_y)
+            atm = tm;
+        else
+            break;
+    }
+
+    if (atm == NULL) {
+        LOG("Could not find a timing point associated with judgement line's Y");
+        autoplayer_enabled = false;
+        return;
+    }
+
+    autoplayer_judgement_line_speed = 100 * atm->SV * 1 / (60.0f / atm->BPM);
+    judgement_line_y += autoplayer_judgement_line_speed * (GetMusicTimePlayed(audio) - prev_audio_pos);
+}
+
+void update_music() {
+    if (IsMusicStreamPlaying(audio)) {
+        if (!autoplayer_enabled) {
+            StopMusicStream(audio);
+        }
+        else {
+            UpdateMusicStream(audio);
+        }
     }
 }
 
