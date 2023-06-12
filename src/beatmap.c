@@ -164,22 +164,24 @@ void beatmap_debug_print(beatmap_t* beatmap) {
             d->CS,
             d->SV
         );
+
+        const int MAX_OBJECTS_SHOWN = 100;
+
         printf("\tTiming points[%lu]:\n", kv_size(d->timing_points));
-        for (int j = 0; j < MIN(100, kv_size(d->timing_points)); j++) {
+        for (int j = 0; j < MIN(MAX_OBJECTS_SHOWN, kv_size(d->timing_points)); j++) {
             timing_point_t* tm = &kv_A(d->timing_points, j);
-            printf("\t\tTM[%d] at %f SV=%f BPM=%f\n", j, tm->time, tm->SV, tm->BPM);
+            printf("\t\tTM[%d] at %f SV=%f BPM=%f Y=%f\n", j, tm->time, tm->SV, tm->BPM, tm->y);
         }
-        if (kv_size(d->timing_points) > 100)
+        if (kv_size(d->timing_points) > MAX_OBJECTS_SHOWN)
             printf("\t\t...\n");
 
         printf("\tHit objects[%lu]:\n", kv_size(d->hitobjects));
-        for (int j = 0; j < MIN(100, kv_size(d->hitobjects)); j++) {
+        for (int j = 0; j < MIN(MAX_OBJECTS_SHOWN, kv_size(d->hitobjects)); j++) {
             hitobject_t* ho = &kv_A(d->hitobjects, j);
-            printf("\t\tHO[%d] at %f to %f COL=%d\n", j, ho->start_time, ho->end_time, ho->column);
+            printf("\t\tHO[%d] at %f from %f COL=%d YS=%f YE=%f\n", j, ho->start_time, ho->end_time, ho->column, ho->start_y, ho->end_y);
         }
-        if (kv_size(d->hitobjects) > 100)
+        if (kv_size(d->hitobjects) > MAX_OBJECTS_SHOWN)
             printf("\t\t...\n");
-
     }
 }
 
@@ -399,9 +401,10 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
         timing_point_t tm = (timing_point_t) {
             .time           = start_time,
             .BPM            = (is_uninherited) ? (roundf(60000 / beat_length)) : (prev_tm.BPM),
-            .SV             = (is_uninherited) ? (args->difficulty->SV) : (args->difficulty->SV * (100.0f / (float)(-beat_length)))
-        };
-
+            .SV             = (is_uninherited) ? (args->difficulty->SV) : (args->difficulty->SV * (100.0f / (float)(-beat_length))),
+            .y              = (is_first_tm) ? (0) : (prev_tm.y + (100 * prev_tm.SV) * (start_time - prev_tm.time))
+        };  // FIXME:                           \_  this is probably untrue because tm.time of the first timing point might be negative.
+            //                                      It means that it should probably be calculated with parameters of the current timing point.
         kv_push(timing_point_t, args->difficulty->timing_points, tm);
         break;
 
@@ -429,7 +432,9 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
         hitobject_t ho = (hitobject_t) {
             .column     = column,
             .start_time = time,
-            .end_time   = (is_hold) ? atoi(params[5]) / 1000.0f : 0
+            .start_y    = 0,
+            .end_time   = (is_hold) ? atoi(params[5]) / 1000.0f : 0,
+            .end_y      = 0
         };
 
         kv_push(hitobject_t, args->difficulty->hitobjects, ho);

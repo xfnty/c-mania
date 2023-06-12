@@ -27,11 +27,14 @@ typedef struct {
     seconds_t               time;
     float                   BPM;
     float                   SV;
+    float                   y;
 } timing_point_t;
 
 typedef struct {
     seconds_t   start_time;
+    float       start_y;
     seconds_t   end_time;  // nonzero for hold note
+    float       end_y;
     int         column;
 } hitobject_t;
 
