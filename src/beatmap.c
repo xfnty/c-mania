@@ -28,10 +28,12 @@
 #include <zip.h>
 #include <kvec.h>
 #include <khash.h>
+#include <ksort.h>
 #include <ini.h>
 
 
 /* constants */
+// Calculated using kh_str_hash_func("Whatever")
 #define SECTION_NULL           0
 #define SECTION_GENERAL        1584505032
 #define SECTION_METADATA       -385360049
@@ -65,8 +67,6 @@
     memcpy((void*)(dest), src, MIN(strlen(src), STACKARRAY_SIZE(dest) - 1));\
     (dest)[STACKARRAY_SIZE(dest) - 1] = '\0';
 
-#define TIME() (clock() / (float)CLOCKS_PER_SEC)
-
 
 /* types */
 typedef struct {
@@ -89,6 +89,10 @@ static bool parse_difficulty(file_t* file, beatmap_t* beatmap, difficulty_t* dif
 static bool preprocess_difficulty_events(difficulty_t* difficulty);
 static int  ini_callback(void* user, const char* section, const char* line, int lineno);
 static const char* skip_space(const char* s);
+static bool sort_hitobjects(hitobject_t a, hitobject_t b);
+static bool sort_timing_points(timing_point_t a, timing_point_t b);
+KSORT_INIT(hitobject_t, hitobject_t, sort_hitobjects);
+KSORT_INIT(timing_point_t, timing_point_t, sort_timing_points);
 
 
 bool beatmap_load(beatmap_t* beatmap, const char* path) {
@@ -101,39 +105,16 @@ bool beatmap_load(beatmap_t* beatmap, const char* path) {
     memset(beatmap, 0, sizeof(beatmap_t));
 
     LOGF("loading beatmap \"%s\" ...", path);
-    load_time = TIME();
     if (!load_files(&files, path))
         return false;
-    load_time = TIME() - load_time;
 
     LOG("parsing beatmap ...");
-    parse_time = TIME();
     for (int i = 0; i < kv_size(files); i++) {
         difficulty_t diff;
-        if (parse_difficulty(&kv_A(files, i), beatmap, &diff))
+        if (parse_difficulty(&kv_A(files, i), beatmap, &diff)) {
             kv_push(difficulty_t, beatmap->difficulties, diff);
+        }
     }
-    parse_time = TIME() - parse_time;
-
-    LOG("preprocessing beatmap events ...");
-    preprocess_time = TIME();
-    for (int i = 0; i < kv_size(beatmap->difficulties); i++) {
-        if (!preprocess_difficulty_events(&kv_A(beatmap->difficulties, i)))
-            return false;
-    }
-    preprocess_time = TIME() - preprocess_time;
-
-    LOGF(
-        "beatmap_load():\n"
-        "\tload: %fs\n"
-        "\tparse: %fs\n"
-        "\tpreprocess: %fs\n"
-        "\tTOTAL: %fs",
-        load_time,
-        parse_time,
-        preprocess_time,
-        load_time + parse_time + preprocess_time
-    );
 
     for (int i = 0; i < kv_size(files); i++) {
         free(kv_A(files, i).data);
@@ -149,19 +130,8 @@ void beatmap_destroy(beatmap_t* beatmap) {
         for (int i = 0; i < kv_size(beatmap->difficulties); i++) {
             difficulty_t* d = &kv_A(beatmap->difficulties, i);
 
-            if (kv_size(d->breaks))         kv_destroy(d->breaks);
             if (kv_size(d->timing_points))  kv_destroy(d->timing_points);
             if (kv_size(d->hitobjects))     kv_destroy(d->hitobjects);
-
-            if (kv_size(d->playfield.columns)) {
-                for (int j = 0; j < kv_size(d->playfield.columns); j++) {
-                    playfield_column_t* c = &kv_A(d->playfield.columns, j);
-
-                    if (kv_size(c->events)) kv_destroy(c->events);
-                }
-
-                kv_destroy(d->playfield.columns);
-            }
         }
 
         kv_destroy(beatmap->difficulties);
@@ -174,65 +144,43 @@ void beatmap_debug_print(beatmap_t* beatmap) {
     LOG("\nBeatmap info:");
     printf(
         "\tid: %d\n"
-        "\ttitle: %s\n"
-        "\tartist: %s\n"
-        "\tcreator: %s\n"
-        "\tsources: %s\n"
-        "\ttags: %s\n",
+        "\ttitle: %s\n",
         beatmap->id,
-        beatmap->title,
-        beatmap->artist,
-        beatmap->creator,
-        beatmap->sources,
-        beatmap->tags
+        beatmap->title
     );
     for (int i = 0; i < kv_size(beatmap->difficulties); i++) {
         difficulty_t* d = &kv_A(beatmap->difficulties, i);
         printf(
             "Difficulty[%d]\n"
-            "\tformat: v%d\n"
             "\tid: %d\n"
             "\tname: %s\n"
             "\taudio: %s\n"
-            "\tbackground: %s\n"
-            "\tHP: %.1f\n"
             "\tCS: %.1f\n"
-            "\tOD: %.1f\n"
-            "\tAR: %.1f\n"
-            "\tSV: %.1f\n"
-            "\trating: %.2f\n"
-            "\tbreaks[%lu]\n"
-            "\ttiming points[%lu]\n"
-            "\thitobjects[%lu]\n",
+            "\tSV: %.1f\n",
             i,
-            d->format_version,
             d->id,
             d->name,
             d->audio_filename,
-            d->background_filename,
-            d->HP,
             d->CS,
-            d->OD,
-            d->AR,
-            d->SV,
-            difficulty_calc_star_rating(d, 0),
-            kv_size(d->breaks),
-            kv_size(d->timing_points),
-            kv_size(d->hitobjects)
+            d->SV
         );
+        printf("\tTiming points[%lu]:\n", kv_size(d->timing_points));
+        for (int j = 0; j < MIN(100, kv_size(d->timing_points)); j++) {
+            timing_point_t* tm = &kv_A(d->timing_points, j);
+            printf("\t\tTM[%d] at %f SV=%f BPM=%f\n", j, tm->time, tm->SV, tm->BPM);
+        }
+        if (kv_size(d->timing_points) > 100)
+            printf("\t\t...\n");
+
+        printf("\tHit objects[%lu]:\n", kv_size(d->hitobjects));
+        for (int j = 0; j < MIN(100, kv_size(d->hitobjects)); j++) {
+            hitobject_t* ho = &kv_A(d->hitobjects, j);
+            printf("\t\tHO[%d] at %f to %f COL=%d\n", j, ho->start_time, ho->end_time, ho->column);
+        }
+        if (kv_size(d->hitobjects) > 100)
+            printf("\t\t...\n");
+
     }
-}
-
-timing_point_t* difficulty_get_timing_point_for(difficulty_t* difficulty, seconds_t time) {
-    assert(difficulty != NULL);
-
-    return NULL;
-}
-
-playfield_event_t* difficulty_get_playfield_event_for(difficulty_t* difficulty, seconds_t time, int column, bool find_nearest) {
-    assert(difficulty != NULL);
-
-    return NULL;
 }
 
 bool load_files(beatmapset_files_t* files, const char* path) {
@@ -339,38 +287,11 @@ bool parse_difficulty(file_t* file, beatmap_t* beatmap, difficulty_t* difficulty
         return false;
     }
 
+    ks_introsort(hitobject_t, kv_size(difficulty->hitobjects), difficulty->hitobjects.a);
+    ks_introsort(timing_point_t, kv_size(difficulty->timing_points), difficulty->timing_points.a);
+
     LOGF("parsed \"%s\"", difficulty->file_name);
     return true;
-}
-
-bool preprocess_difficulty_events(difficulty_t* difficulty) {
-    assert(difficulty != NULL);
-
-    kv_init(difficulty->playfield.columns);
-    kv_resize(playfield_column_t, difficulty->playfield.columns, difficulty->CS);
-    for (int ci = 0; ci < difficulty->CS; ci++) {
-        playfield_column_t col = {0};
-        kv_init(col.events);
-
-        // TODO: create column events
-
-        kv_push(playfield_column_t, difficulty->playfield.columns, col);
-    }
-
-    LOGF("preprocessed \"%s\"", difficulty->file_name);
-    return true;
-}
-
-float difficulty_calc_star_rating(difficulty_t* difficulty, void* mods) {
-    assert(difficulty != NULL);
-
-    // References:
-    //      https://github.com/ppy/osu-performance/blob/master/src/performance/mania/ManiaScore.cpp
-    //      https://github.com/ppy/osu/blob/master/osu.Game.Rulesets.Mania/Difficulty/Skills/Strain.cs
-
-    // TODO
-
-    return 0;
 }
 
 int ini_callback(void* user, const char* section, const char* line, int lineno) {
@@ -408,14 +329,6 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
             STRCP(args->difficulty->audio_filename, value);
             break;
 
-        case KEY_AUDIO_LEAD_IN:
-            args->difficulty->audio_lead_in = atof(value);
-            break;
-
-        case KEY_PREVIEW_TIME:
-            args->difficulty->preview_time = atof(value);
-            break;
-
         case KEY_MODE:
             if (atoi(value) != 3) {
                 LOGF("failed to parse \"%s\": not an osu!mania beatmap (%s)", args->difficulty->file_name, line);
@@ -432,34 +345,8 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
                 STRCP(args->beatmap->title, value);
             break;
 
-        case KEY_TITLE_UNICODE:
-            break;
-
-        case KEY_ARTIST:
-            if (args->beatmap->artist[0] == '\0')
-                STRCP(args->beatmap->artist, value);
-            break;
-
-        case KEY_ARTIST_UNICODE:
-            break;
-
-        case KEY_CREATOR:
-            if (args->beatmap->creator[0] == '\0')
-                STRCP(args->beatmap->creator, value);
-            break;
-
         case KEY_VERSION:
             STRCP(args->difficulty->name, value);
-            break;
-
-        case KEY_SOURCES:
-            if (args->beatmap->sources[0] == '\0')
-                STRCP(args->beatmap->sources, value);
-            break;
-
-        case KEY_TAGS:
-            if (args->beatmap->tags[0] == '\0')
-                STRCP(args->beatmap->tags, value);
             break;
 
         case KEY_BEATMAP_ID:
@@ -474,38 +361,13 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
 
     case SECTION_DIFFICULTY:
         switch (key_hash) {
-        case KEY_HP:
-            args->difficulty->HP = atof(value);
-            break;
-
-        case KEY_OD:
-            args->difficulty->OD = atof(value);
-            break;
-
         case KEY_CS:
             args->difficulty->CS = atof(value);
-            break;
-
-        case KEY_AR:
-            args->difficulty->AR = atof(value);
             break;
 
         case KEY_SV:
             args->difficulty->SV = atof(value);
             break;
-        }
-        break;
-
-    case SECTION_EVENTS:
-        if (event_type == 0) {
-            params[2][strlen(params[2]) - 1] = '\0';
-            STRCP(args->difficulty->background_filename, params[2] + 1);
-        }
-        else if (event_type == 2) {
-            break_event_t b;
-            b.start_time = atoi(params[1]);
-            b.end_time = atoi(params[2]);
-            kv_push(break_event_t, args->difficulty->breaks, b);
         }
         break;
 
@@ -516,7 +378,7 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
         }
 
         seconds_t       start_time      = atoi(params[0]) / 1000.0f;
-        seconds_t       length          = atoi(params[1]) / 1000.0f;
+        seconds_t       beat_length     = atof(params[1]);
         int             meter           = atoi(params[2]);
         int             sample_set      = atoi(params[3]);
         int             sample_index    = atoi(params[4]);
@@ -524,22 +386,20 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
         bool            is_uninherited  = atoi(params[6]) == 1;
         bool            effects         = atoi(params[7]);
         bool            is_first_tm     = kv_size(args->difficulty->timing_points) == 0;
-        float           SV              = args->difficulty->SV;
 
         if (is_first_tm && !is_uninherited) {
             LOGF("failed to parse \"%s\": first timing point can not be inhereited (\"%s\" at line %d)", args->difficulty->file_name, line, lineno);
             return false;
         }
 
-        timing_point_t prev_tm = (is_first_tm) ? (timing_point_t){0} : kv_A(args->difficulty->timing_points, kv_size(args->difficulty->timing_points) - 1);
+        timing_point_t prev_tm = (!is_first_tm)
+            ? (kv_A(args->difficulty->timing_points, kv_size(args->difficulty->timing_points) - 1))
+            : ((timing_point_t){0});
 
         timing_point_t tm = (timing_point_t) {
-            .start_time     = start_time,
-            .beat_length    = (is_uninherited) ? (length) : (prev_tm.beat_length),
-            .SV             = (is_uninherited) ? (SV)     : (SV * (tm.beat_length / 100.0f)),
-            .meter          = meter,
-            .volume         = volume,
-            .kiai_enabled   = effects & 0x1
+            .time           = start_time,
+            .BPM            = (is_uninherited) ? (roundf(60000 / beat_length)) : (prev_tm.BPM),
+            .SV             = (is_uninherited) ? (args->difficulty->SV) : (args->difficulty->SV * (100.0f / (float)(-beat_length)))
         };
 
         kv_push(timing_point_t, args->difficulty->timing_points, tm);
@@ -576,7 +436,6 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
         break;
 
     case SECTION_NULL:
-        args->difficulty->format_version = atoi(TextSubtext(line, 17, strlen(line) - 17));
         break;
     }
 
@@ -588,4 +447,12 @@ const char* skip_space(const char* s) {
 
     while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
     return s;
+}
+
+bool sort_hitobjects(hitobject_t a, hitobject_t b) {
+    return a.start_time < b.start_time;
+}
+
+bool sort_timing_points(timing_point_t a, timing_point_t b) {
+    return a.time < b.time;
 }
