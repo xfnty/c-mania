@@ -64,5 +64,7 @@ bool beatmap_load(beatmap_t* beatmap, const char* path);
 void beatmap_destroy(beatmap_t* beatmap);
 void beatmap_debug_print(beatmap_t* beatmap);
 
+int difficulty_get_timing_point_index_for_time(difficulty_t* difficulty, seconds_t time);
+
 
 #endif

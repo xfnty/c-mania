@@ -186,6 +186,23 @@ void beatmap_debug_print(beatmap_t* beatmap) {
     }
 }
 
+int difficulty_get_timing_point_index_for_time(difficulty_t* difficulty, seconds_t time) {
+    assert(difficulty != NULL);
+
+    if (kv_size(difficulty->timing_points) == 0)
+        return -1;
+
+    int i = 0;
+    for (; i < kv_size(difficulty->timing_points); i++) {
+        timing_point_t* tm = &kv_A(difficulty->timing_points, i);
+
+        if (tm->time > time)
+            return i - 1;
+    }
+
+    return i;
+}
+
 bool load_files(beatmapset_files_t* files, const char* path) {
     assert(files != NULL);
     assert(path != NULL);
@@ -433,17 +450,8 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
         if (is_hold)
             strchr(params[5], ':')[0] = '\0';
 
-        // FIXME: This is obviously not the optimal solution
-        timing_point_t* atm = NULL;
-        for (int i = 0; i < kv_size(args->difficulty->timing_points); i++) {
-            timing_point_t* t = &kv_A(args->difficulty->timing_points, i);
-            if (t->time <= time_strt)
-                atm = t;
-            else
-                break;
-        }
-
-        if (atm == NULL) {
+        int i = difficulty_get_timing_point_index_for_time(args->difficulty, time_strt);
+        if (i < 0) {
             LOGF(
                 "failed to parse \"%s\":"
                 " hit object %d does not have associated timing point"
@@ -455,6 +463,7 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
             );
             return false;
         }
+        timing_point_t* atm = &kv_A(args->difficulty->timing_points, i);
 
         hitobject_t ho = (hitobject_t) {
             .column     = column,

@@ -71,7 +71,7 @@ void init(int argc, const char *argv[]) {
 
     InitWindow(width, height, "CMania");
     SetWindowState(FLAG_WINDOW_RESIZABLE);
-    SetTargetFPS(60);
+    // SetTargetFPS(60);
 
     difficulty_t* d = &kv_A(beatmap.difficulties, difficulty_i);
 
@@ -85,7 +85,6 @@ void update() {
     update_timing_point_render_range();
     update_hitobject_render_range();
     update_autoplayer();
-    // update_music();
 
     draw_hitobjects();
     draw_timing_points();
@@ -116,9 +115,10 @@ void load_beatmap(const char* path) {
 }
 
 void draw_info() {
-    DrawText(TextFormat("[%d] %s", difficulty_i, kv_A(beatmap.difficulties, difficulty_i).name), 0, 0, 16, BLACK);
-    DrawText(TextFormat("pos: %.0f", judgement_line_y), 0, 18, 16, GRAY);
-    DrawText(TextFormat("auto: %d spd=%.3f", autoplayer_enabled, autoplayer_judgement_line_speed), 0, 36, 16, (autoplayer_enabled) ? GREEN : GRAY);
+    DrawFPS(0, 0);
+    DrawText(TextFormat("[%d] %s", difficulty_i, kv_A(beatmap.difficulties, difficulty_i).name), 0, 20, 16, BLACK);
+    DrawText(TextFormat("pos: %.0f", judgement_line_y), 0, 38, 16, GRAY);
+    DrawText(TextFormat("auto: %d spd=%.3f", autoplayer_enabled, autoplayer_judgement_line_speed), 0, 56, 16, (autoplayer_enabled) ? GREEN : GRAY);
 }
 
 void draw_judgement_line() {
@@ -183,7 +183,8 @@ void update_autoplayer() {
 
     difficulty_t* d = &kv_A(beatmap.difficulties, difficulty_i);
     timing_point_t* atm = NULL;
-    for (int i = MAX(0, timing_point_render_range[0] - 1); i < MIN(timing_point_render_range[1] + 1, kv_size(d->timing_points)); i++) {
+    int i = MAX(0, timing_point_render_range[0] - 1);
+    for (; i < MIN(timing_point_render_range[1] + 1, kv_size(d->timing_points)); i++) {
         timing_point_t* tm = &kv_A(d->timing_points, i);
         if (tm->y <= judgement_line_y)
             atm = tm;
