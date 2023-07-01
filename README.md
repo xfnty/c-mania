@@ -1,5 +1,13 @@
 # Osu!mania clone
 
+Building
+```
+make
+```
+Running
+```
+make args="./assets/map2.osz"
+```
 
 - [`.osu` File format](https://osu.ppy.sh/wiki/en/Client/File_formats/Osu_(file_format))
 - [Raylib docs](https://www.raylib.com/cheatsheet/cheatsheet.html)

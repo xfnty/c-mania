@@ -10,13 +10,7 @@
 #include <kvec.h>
 #include <raylib.h>
 
-#include <defines.h>
-
-
-/* macros */
-#ifndef STRSIZE
-#define STRSIZE 128
-#endif
+#include "util.h"
 
 
 /* types */
@@ -40,9 +34,9 @@ typedef struct {
 
 typedef struct {
     id_t id;
-    char name[STRSIZE];
-    char file_name[STRSIZE];
-    char audio_filename[STRSIZE];
+    char name[256];
+    char file_name[256];
+    char audio_filename[256];
 
     float CS;  // column count in osu!mania
     float SV;
@@ -53,19 +47,18 @@ typedef struct {
 
 typedef struct {
     id_t id;
-    char title[STRSIZE];
+    char title[256];
 
     kvec_t(difficulty_t) difficulties;
 } beatmap_t;
 
 
 /* function declarations */
-bool beatmap_load(beatmap_t* beatmap, const char* path);
-void beatmap_destroy(beatmap_t* beatmap);
-void beatmap_debug_print(beatmap_t* beatmap);
+error_t beatmap_load(beatmap_t* beatmap, const char* path);
+void    beatmap_destroy(beatmap_t* beatmap);
 
 timing_point_t* difficulty_get_timing_point_for_time(difficulty_t* difficulty, seconds_t time);
-int             difficulty_get_timing_point_index_for_time(difficulty_t* difficulty, seconds_t time);
+int difficulty_get_timing_point_index_for_time(difficulty_t* difficulty, seconds_t time);
 
 
 #endif

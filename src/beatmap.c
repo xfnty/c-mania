@@ -8,7 +8,8 @@
  * @date       2023
  */
 
-#include <beatmap.h>
+#define SCOPE_NAME "beatmap loader"
+#include "beatmap.h"
 
 #include <stddef.h>
 #include <assert.h>
@@ -18,10 +19,6 @@
 #include <time.h>
 #include <math.h>
 
-#define SCOPE_NAME "beatmap"
-#include <logging.h>
-#include <defines.h>
-
 #include <humanize.h>
 #include <raylib.h>
 #include <raymath.h>
@@ -30,6 +27,8 @@
 #include <khash.h>
 #include <ksort.h>
 #include <ini.h>
+
+#include "util.h"
 
 
 /* constants */
@@ -65,15 +64,15 @@
 
 /* macros */
 #define STRCP(dest, src)\
-    memcpy((void*)(dest), src, MIN(strlen(src), STACKARRAY_SIZE(dest) - 1));\
-    (dest)[STACKARRAY_SIZE(dest) - 1] = '\0';
+    memcpy((void*)(dest), src, MIN(strlen(src), ARRAY_LENGTH(dest) - 1));\
+    (dest)[ARRAY_LENGTH(dest) - 1] = '\0';
 
 
 /* types */
 typedef struct {
     char* data;
     size_t size;
-    char name[STRSIZE];
+    char name[256];
 } file_t;
 
 typedef kvec_t(file_t) beatmapset_files_t;
@@ -85,7 +84,7 @@ typedef struct {
 
 
 /* local functions */
-static bool         load_files(beatmapset_files_t* files, const char* path);
+static error_t      load_files(beatmapset_files_t* files, const char* path);
 static bool         parse_difficulty(file_t* file, beatmap_t* beatmap, difficulty_t* difficulty);
 static bool         preprocess_difficulty_events(difficulty_t* difficulty);
 static int          ini_callback(void* user, const char* section, const char* line, int lineno);
@@ -96,7 +95,7 @@ KSORT_INIT(hitobject_t, hitobject_t, sort_hitobjects);
 KSORT_INIT(timing_point_t, timing_point_t, sort_timing_points);
 
 
-bool beatmap_load(beatmap_t* beatmap, const char* path) {
+error_t beatmap_load(beatmap_t* beatmap, const char* path) {
     assert(beatmap != NULL);
     assert(path != NULL);
 
@@ -106,8 +105,7 @@ bool beatmap_load(beatmap_t* beatmap, const char* path) {
     memset(beatmap, 0, sizeof(beatmap_t));
 
     LOGF("loading beatmap \"%s\" ...", path);
-    if (!load_files(&files, path))
-        return false;
+    CHECK_ERROR_LOG_PROPAGATE(load_files(&files, path), "Failed to load beatmap files");
 
     LOG("parsing beatmap ...");
     for (int i = 0; i < kv_size(files); i++) {
@@ -121,7 +119,7 @@ bool beatmap_load(beatmap_t* beatmap, const char* path) {
         free(kv_A(files, i).data);
     }
 
-    return true;
+    return ERROR_SUCCESS;
 }
 
 void beatmap_destroy(beatmap_t* beatmap) {
@@ -143,7 +141,7 @@ void beatmap_debug_print(beatmap_t* beatmap) {
     assert(beatmap != NULL);
 
     LOG("\nBeatmap info:");
-    printf(
+    LOGF_DESC(
         "\tid: %d\n"
         "\ttitle: %s\n",
         beatmap->id,
@@ -151,7 +149,7 @@ void beatmap_debug_print(beatmap_t* beatmap) {
     );
     for (int i = 0; i < kv_size(beatmap->difficulties); i++) {
         difficulty_t* d = &kv_A(beatmap->difficulties, i);
-        printf(
+        LOGF_DESC(
             "Difficulty[%d]\n"
             "\tid: %d\n"
             "\tname: %s\n"
@@ -168,7 +166,7 @@ void beatmap_debug_print(beatmap_t* beatmap) {
 
         const int MAX_OBJECTS_SHOWN = 100;
 
-        printf("\tTiming points[%lu]:\n", kv_size(d->timing_points));
+        LOGF_DESC("\tTiming points[%lu]:\n", kv_size(d->timing_points));
         // for (int j = 0; j < MIN(MAX_OBJECTS_SHOWN, kv_size(d->timing_points)); j++) {
         //     timing_point_t* tm = &kv_A(d->timing_points, j);
         //     printf("\t\tTM[%d] at %f SV=%f BPM=%f Y=%f\n", j, tm->time, tm->SV, tm->BPM, tm->y);
@@ -176,7 +174,7 @@ void beatmap_debug_print(beatmap_t* beatmap) {
         // if (kv_size(d->timing_points) > MAX_OBJECTS_SHOWN)
         //     printf("\t\t...\n");
 
-        printf("\tHit objects[%lu]:\n", kv_size(d->hitobjects));
+        LOGF_DESC("\tHit objects[%lu]:\n", kv_size(d->hitobjects));
         // for (int j = 0; j < MIN(MAX_OBJECTS_SHOWN, kv_size(d->hitobjects)); j++) {
         //     hitobject_t* ho = &kv_A(d->hitobjects, j);
         //     printf("\t\tHO[%d] at %f from %f COL=%d YS=%f YE=%f\n", j, ho->start_time, ho->end_time, ho->column, ho->start_y, ho->end_y);
@@ -208,42 +206,45 @@ int difficulty_get_timing_point_index_for_time(difficulty_t* difficulty, seconds
     return i;
 }
 
-bool load_files(beatmapset_files_t* files, const char* path) {
+error_t load_files(beatmapset_files_t* files, const char* path) {
     assert(files != NULL);
     assert(path != NULL);
 
     kv_init(*files);
 
-    if (TextIsEqual(GetFileExtension(path), ".osz")) {
+    if (FileExists(path)) {
+        if (!TextIsEqual(GetFileExtension(path), ".osz"))
+            return ERROR_UNDEFINED;
+
         struct zip_t* zip = zip_open(path, 0, 'r');
         if (zip == NULL) {
             LOGF("Failed to open \"%s\" as a zip file", path);
-            return false;
+            return ERROR_UNDEFINED;
         }
 
         int n = zip_entries_total(zip);
         for (int i = 0; i < n; i++) {
             if (zip_entry_openbyindex(zip, i) != 0) {
                 LOGF("Failed to open zip entry %d in \"%s\"", i, path);
-                return false;
+                return ERROR_UNDEFINED;
             }
 
             const char *name = zip_entry_name(zip);
             if (name == NULL) {
                 LOGF("Recieved NULL name on entry %d in \"%s\"", i, path);
-                return false;
+                return ERROR_UNDEFINED;
             }
 
             if (!zip_entry_isdir(zip) && TextIsEqual(GetFileExtension(name), ".osu")) {
                 file_t f;
                 f.size = zip_entry_size(zip) + 1;
                 f.data = malloc(f.size);
-                strncpy(f.name, name, STACKARRAY_SIZE(f.name));
+                strncpy(f.name, name, ARRAY_LENGTH(f.name));
 
                 ssize_t br = zip_entry_noallocread(zip, f.data, f.size);
                 if (br <= 0) {
-                    LOGF("Failed to read zip entry: %d", br);
-                    return false;
+                    LOGF("Failed to read zip entry: %ld", br);
+                    return ERROR_UNDEFINED;
                 }
                 f.data[br] = '\0';
 
@@ -255,7 +256,7 @@ bool load_files(beatmapset_files_t* files, const char* path) {
         }
     }
     else if (DirectoryExists(path)) {
-        FilePathList fs = LoadDirectoryFilesEx(path, ".osu", false);
+        FilePathList fs = LoadDirectoryFilesEx(path, ".osu", ERROR_UNDEFINED);
         for (int i = 0; i < fs.count; i++) {
             file_t f;
 
@@ -269,11 +270,11 @@ bool load_files(beatmapset_files_t* files, const char* path) {
             size_t count = fread(f.data, 1, f.size, file);
             f.data[count] = '\0';
 
-            strncpy(f.name, GetFileName(fs.paths[i]), STACKARRAY_SIZE(f.name));
+            strncpy(f.name, GetFileName(fs.paths[i]), ARRAY_LENGTH(f.name));
 
             if (f.data == NULL || f.size == 0) {
                 LOGF("Could not read \"%s\"", fs.paths[i]);
-                return false;
+                return ERROR_UNDEFINED;
             }
 
             kv_push(file_t, *files, f);
@@ -282,8 +283,8 @@ bool load_files(beatmapset_files_t* files, const char* path) {
         }
     }
     else {
-        LOGF("\"%s\" is not a valid osu file or a beatmap directory", path);
-        return false;
+        LOGF("\"%s\" does not exists", path);
+        return ERROR_FILE_NOT_FOUND;
     }
 
     size_t total_size = 0;
@@ -291,7 +292,7 @@ bool load_files(beatmapset_files_t* files, const char* path) {
         total_size += kv_A(*files, i).size;
     LOGF("total beatmap size is %s", humanize_bytesize(total_size));
 
-    return true;
+    return ERROR_SUCCESS;
 }
 
 bool parse_difficulty(file_t* file, beatmap_t* beatmap, difficulty_t* difficulty) {
@@ -337,8 +338,8 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
 
     if (section_hash == SECTION_GENERAL || section_hash == SECTION_METADATA || section_hash == SECTION_DIFFICULTY) {
         int delim_i = TextFindIndex(line, ":");
-        memcpy(key, line, MIN(delim_i, STACKARRAY_SIZE(key)));
-        memcpy(value, skip_space(line + delim_i + 1), MIN(strlen(skip_space(line + delim_i + 1)), STACKARRAY_SIZE(value)));
+        memcpy(key, line, MIN(delim_i, ARRAY_LENGTH(key)));
+        memcpy(value, skip_space(line + delim_i + 1), MIN(strlen(skip_space(line + delim_i + 1)), ARRAY_LENGTH(value)));
         key_hash = kh_str_hash_func(key);
     }
     else {
@@ -459,7 +460,7 @@ int ini_callback(void* user, const char* section, const char* line, int lineno) 
         if (i < 0) {
             LOGF(
                 "failed to parse \"%s\":"
-                " hit object %d does not have associated timing point"
+                " hit object %ld does not have associated timing point"
                 " (\"%s\" at line %d)",
                 args->difficulty->file_name,
                 kv_size(args->difficulty->hitobjects) - 1,

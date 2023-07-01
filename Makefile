@@ -33,7 +33,7 @@ $(RUN):
 	echo ----- Running -----
 	cp -rf assets $(OUTPUT_DIR)
 	cd $(OUTPUT_DIR)
-	$(EXE)
+	$(EXE) $(args)
 
 $(DEBUG):
 	echo ----- Debugging -----
