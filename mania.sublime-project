@@ -13,7 +13,5 @@
         "tab_size": 4,
         "use_tab_stops": true,
         "rulers": [[100, "solid"]],
-        "folder_exclude_patterns": [],
-        "file_exclude_patterns": [],
     }
 }
