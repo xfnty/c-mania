@@ -4,13 +4,15 @@ include("CMakeHelpers.cmake")
 
 
 # ===== Build options ===== #
-set(PROJECT_BUILD_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build")
+set(PROJECT_BUILD_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin")
 option(BUILD_SHARED_LIBS "Build shared libs" OFF)
 
 
 # ===== Project ===== #
-project("mania" LANGUAGES C CXX)
-add_compile_options(-g)
+project("mania" LANGUAGES C)
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    add_compile_options(-g -O0)
+endif()
 
 
 # ===== Third Party libraries ===== #
@@ -44,10 +46,6 @@ set_target_properties(
 	${PROJECT_NAME}
 	PROPERTIES
 	OUTPUT_NAME "${PROJECT_NAME}"
-	RUNTIME_OUTPUT_DIRECTORY_DEBUG "${PROJECT_BUILD_DIRECTORY}/debug"
-	RUNTIME_OUTPUT_DIRECTORY_RELEASE "${PROJECT_BUILD_DIRECTORY}/release"
+	RUNTIME_OUTPUT_DIRECTORY_DEBUG "${PROJECT_BUILD_DIRECTORY}"
+	RUNTIME_OUTPUT_DIRECTORY_RELEASE "${PROJECT_BUILD_DIRECTORY}"
 )
-
-
-# ===== Sandbox ===== #
-add_subdirectory("sandbox")
